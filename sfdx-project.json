@@ -5,12 +5,15 @@
       "default": true,
       "package": "apex-core-lib",
       "versionName": "ver 0.1",
-      "versionNumber": "0.1.0.NEXT"
+      "versionNumber": "0.1.0.NEXT",
+      "versionDescription": "Apex platform foundation library (DI, FFLIB-style layers, triggers, secure DML, callouts)."
     }
   ],
   "name": "apex-core-lib",
   "namespace": "",
   "sfdcLoginUrl": "https://login.salesforce.com",
   "sourceApiVersion": "68.0",
-  "packageAliases": {}
+  "packageAliases": {
+    "apex-core-lib": "0Hoak0000007Rl3CAE"
+  }
 }
