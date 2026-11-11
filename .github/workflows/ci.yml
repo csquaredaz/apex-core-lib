@@ -1,0 +1,145 @@
+name: ci
+
+# Free-only pipeline: GitHub-hosted runners on a public repo, open-source tooling and a free
+# Developer Edition Dev Hub. No paid services, coverage SaaS or model calls.
+#
+# Developer Edition Dev Hub budget: 3 active and 6 daily scratch orgs (rolling 24h).
+# To stay inside it:
+#   - the scratch-org job runs only after static checks pass, never on draft PRs,
+#   - concurrency cancels superseded runs before they create an org,
+#   - the org lives for one day and is deleted in an always() step.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  SF_CLI_VERSION: "2.157.8"
+  GITLEAKS_VERSION: "8.30.1"
+  CODE_ANALYZER_VERSION: "5.16.0"
+
+jobs:
+  static:
+    name: static checks (prettier, eslint, jest, code analyzer, gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # PMD (Apex rules in Code Analyzer) needs a JDK.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run test:unit
+      - name: Install Salesforce CLI and Code Analyzer
+        run: |
+          npm install -g "@salesforce/cli@${SF_CLI_VERSION}"
+          sf plugins install "@salesforce/plugin-code-analyzer@${CODE_ANALYZER_VERSION}"
+      - name: Code Analyzer (fail on High or Critical)
+        run: >-
+          sf code-analyzer run
+          --config-file code-analyzer.yml
+          --rule-selector Recommended
+          --severity-threshold 2
+          --view table
+          --output-file code-analyzer-results.html
+      - name: Upload Code Analyzer report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: code-analyzer-results
+          path: code-analyzer-results.html
+          if-no-files-found: ignore
+      - name: Secret scan (gitleaks, full history)
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1
+
+  scratch-org:
+    name: scratch org (deploy + Apex tests)
+    needs: static
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g "@salesforce/cli@${SF_CLI_VERSION}"
+
+      # JWT bearer auth to the Dev Hub. Every value comes from repository secrets; the key file
+      # exists only on the runner and is deleted in the cleanup step.
+      - name: Authenticate Dev Hub (JWT)
+        env:
+          SF_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
+          SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
+          SF_DEVHUB_USERNAME: ${{ secrets.SF_DEVHUB_USERNAME }}
+        run: |
+          printf '%s\n' "$SF_JWT_KEY" > "$RUNNER_TEMP/server.key"
+          sf org login jwt \
+            --client-id "$SF_CONSUMER_KEY" \
+            --jwt-key-file "$RUNNER_TEMP/server.key" \
+            --username "$SF_DEVHUB_USERNAME" \
+            --alias devhub \
+            --set-default-dev-hub
+
+      - name: Create scratch org, install dependencies, deploy
+        run: bash scripts/org-setup.sh ci-org
+        env:
+          SF_SCRATCH_DURATION: "1"
+          # The Dev Hub authenticates through an External Client App, which scratch-org signup
+          # can't replicate. These official CLI variables (CLI >= 2.147.7) make signup use the
+          # built-in Salesforce CLI connected app instead. See forcedotcom/cli#3515.
+          SF_SCRATCH_SIGNUP_CONNECTED_APP: PlatformCLI
+          SF_SCRATCH_SIGNUP_CALLBACK_URL: http://localhost:1717/OauthRedirect
+
+      - name: Run Apex tests with coverage
+        run: |
+          mkdir -p tests/apex
+          sf apex run test \
+            --target-org ci-org \
+            --test-level RunLocalTests \
+            --code-coverage \
+            --result-format human \
+            --output-dir tests/apex \
+            --wait 30
+          # Coverage is published to the job summary and as an artifact; no third-party service.
+          node -e '
+            const r = require("./tests/apex/test-result.json").result.summary;
+            console.log(`### Apex tests\n\n| Outcome | Tests | Org-wide coverage |\n|---|---|---|\n| ${r.outcome} | ${r.testsRan} | ${r.orgWideCoverage} |`);
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Apex test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: apex-test-results
+          path: tests/apex
+          if-no-files-found: ignore
+
+      - name: Delete scratch org and key
+        if: always()
+        run: |
+          sf org delete scratch --target-org ci-org --no-prompt || true
+          rm -f "$RUNNER_TEMP/server.key"
