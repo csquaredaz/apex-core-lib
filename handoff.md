@@ -24,7 +24,7 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 3 (v1.0.0 and R1)
 
 ## Resume here
 
-1. Chad promotes `1.0.0-1` when ready: run `release.yml` by hand with `version_id=04tak000000u0zpAAA`, `tag=v1.0.0`, `confirm=PROMOTE`. Never Claude.
+1. Done: Chad promoted `1.0.0-1` through the `release.yml` dispatch (2026-11-12). The release is now latest, and the promote job now rewrites the release notes, dropping the beta wording.
 2. Definition of done (below), then ask Chad about the workspace `CLAUDE.md` status table and `roadmap.md`, and before making the repo public.
 3. Back-port to E before repo B: the ADR 0008 `reuse` job and `!cancelled()` conditions, the test-result filename fix, the RunLocalTests skip, the `badges` job, and a custom PMD ruleset for `method_condition_result` test names.
 

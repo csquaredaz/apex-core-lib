@@ -179,7 +179,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
-        run: gh release edit "$TAG" --prerelease=false --latest --title "${PACKAGE} ${TAG}"
+          VERSION_ID: ${{ inputs.version_id }}
+        # Rewrite the notes too: the build job's beta wording ("scratch orgs and sandboxes only")
+        # is wrong once the version is released.
+        run: |
+          {
+            echo "Released unlocked package version, built from \`${TAG}\`."
+            echo
+            echo '```bash'
+            echo "sf package install --package ${VERSION_ID} --target-org <alias> --wait 20 --no-prompt"
+            echo '```'
+            echo
+            echo "Installs in any org, including production."
+          } > notes.md
+          gh release edit "$TAG" --prerelease=false --latest --title "${PACKAGE} ${TAG}" --notes-file notes.md
 
       - name: Delete key
         if: always()
