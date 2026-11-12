@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–6)
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–7)
 
 ## Done
 
@@ -14,29 +14,16 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–6)
 - PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
 - Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Resume here (PR 6 open)
+## Resume here (PR 7 open)
 
-PRs 4 and 5 are merged (`89cd5ce`, `4d48a11`), and the `main` runs are green (badge 99% until this PR lands).
+PR 6 merged (`26592ca`), the `main` run is green, and the badge job now publishes **100%** coverage. PR 6's details are in the README "Usage" and "Testing" sections.
 
-PR 6 `feat(example)` is built on branch `feat/example-app` and verified in `acl-dev`: 183 tests pass and coverage is 100% (the real trigger now covers the last `TriggerContext` line). Code Analyzer reports 0 High. Next step: wait for CI on the PR, then Chad merges.
+PR 7 `docs` is on branch `docs/readme-case-study`: the README in the seven-section order, and `docs/case-study.md`. The case study is self-contained for the portfolio site, with no relative links and no employer metrics. Next step: Chad reviews the prose and the Mermaid diagram in the PR's rendered view, CI passes, and Chad merges.
 
-What shipped (unpackaged `example/` directory, registered in `sfdx-project.json` without a `package` key, so it never enters a package version):
+## Next (after PR 7 merges)
 
-| Area      | Contents                                                                                                                                                                                                                                                                     |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| shipments | `Shipment__c` (`Order__c`, `Status__c` Pending/Booked, `Weight_Kg__c`, `Carrier_Reference__c`; private sharing), `ShipmentTrigger` (one line), `ShipmentsSelector`, `ShipmentsDomain` (+ `Constructor`), `ShipmentsService`, `CarrierBookingJob` (Queueable, AllowsCallouts) |
-| carrier   | `ICarrierGateway` / `CarrierGateway` (one POST per batch, with an `Idempotency-Key` that is the SHA-256 of the sorted Ids), External Credential `Carrier` (Custom protocol, no secret) and Named Credential `Carrier` (`https://carrier.example.com`)                        |
-| config    | `DI_Binding` rows for the selector, domain, service and gateway; `Trigger_Setting.Shipment` (active); `Shipment_Manager` permission set (shipment create/edit, order/account read, carrier principal access; no delete or View All)                                          |
-| tests     | `TestDataFactory`, `CarrierApiMock`, unit tests with Stub API mocks (domain, service, gateway), and `ShipmentsIntegrationTest` (real DML as least-privilege users)                                                                                                           |
-
-Integration test results: 200 shipments saved as `Shipment_Manager` with 0 SOQL, at most 2 DML statements (the insert plus the Unit of Work savepoint), 1 queued job and 1 carrier call, and every shipment ends up `Booked`. A carrier 503 leads to 3 attempts, after which the shipments stay `Pending`. A zero weight is rejected by the domain. A user without the permission set is denied by user-mode DML. `bypass` skips the domain.
-
-`scripts/org-setup.sh` now assigns permission sets from `example/` too.
-
-## Next (after PR 6 merges)
-
-1. PR 7 `docs`: README in the seven-section order (problem, Mermaid diagram, 3-command quick start, usage from the example, design decisions table linking ADRs 0001–0007, testing, "Built with Claude Code"), and `docs/case-study.md`. Chad split docs from the example app (PR 6).
-2. PR 8 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there.
+1. PR 8 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there. Add an "Install" line to the README quick start once a version exists (left out on purpose until there is one).
+2. Then repo A's definition of done: CI green, README complete, ADRs written, Code Analyzer clean, no `TODO`s, case study written. Update the workspace `CLAUDE.md` status table and `roadmap.md` (Chad's call), and ask Chad before making the repo public.
 
 ## Decisions made
 
