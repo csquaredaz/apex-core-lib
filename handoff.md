@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–5)
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–6)
 
 ## Done
 
@@ -14,29 +14,29 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–5)
 - PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
 - Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Resume here (PR 5 open)
+## Resume here (PR 6 open)
 
-PR 4 merged (`89cd5ce`), the `main` run is green, and the badge reads 99%: one `TriggerContext` line runs only in a real trigger, and PR 6 covers it. The PR 4 detail is in ADR 0006.
+PRs 4 and 5 are merged (`89cd5ce`, `4d48a11`), and the `main` runs are green (badge 99% until this PR lands).
 
-PR 5 `feat(callout)` is built on branch `feat/callout-client` and verified in `acl-dev`: 165 tests pass, 100% org-wide coverage, Code Analyzer 0 High. Next step: wait for CI on the PR, then Chad merges.
+PR 6 `feat(example)` is built on branch `feat/example-app` and verified in `acl-dev`: 183 tests pass and coverage is 100% (the real trigger now covers the last `TriggerContext` line). Code Analyzer reports 0 High. Next step: wait for CI on the PR, then Chad merges.
 
-What shipped, against the brief:
+What shipped (unpackaged `example/` directory, registered in `sfdx-project.json` without a `package` key, so it never enters a package version):
 
-| Class                    | Notes                                                                                                                                                                                                                                                                |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ICalloutClient`         | Port. `Application.Service` binds it to `CalloutClient` by default.                                                                                                                                                                                                  |
-| `CalloutClient`          | Up to 2 immediate retries on a transport error, 408, 500, 502, 503 or 504, for idempotent requests only. When retries run out it throws (Chad's call). Each failed attempt logs `ILogger.warn` with the correlation id. Stops early if the callout limit is reached. |
-| `CalloutRequest`         | Builder. `callout:<NamedCredential><path>` only; the path must be empty or start with `/` or `?`. `X-Correlation-Id` is generated and reused across retries. `withIdempotencyKey` makes POST/PATCH retryable. Timeout 1–120000 ms (default 10000).                   |
-| `CalloutResponse`        | Typed and read-only; case-insensitive headers, `isSuccess()`, `getRetryAfterSeconds()`, `readJson(Type)`. Public constructor, so consumers can mock `ICalloutClient`.                                                                                                |
-| `RetryPolicy`            | Strategy (virtual). 0–2 retries, enforced. 429 is **not** retried (Chad's call; the plan said retry), and neither are 501 or 505.                                                                                                                                    |
-| `CalloutClientException` | Renamed from `CalloutException`, which shadows `System.CalloutException`. Carries `getAttempts()` and `getLastResponse()`, with the platform error as its cause.                                                                                                     |
+| Area      | Contents                                                                                                                                                                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| shipments | `Shipment__c` (`Order__c`, `Status__c` Pending/Booked, `Weight_Kg__c`, `Carrier_Reference__c`; private sharing), `ShipmentTrigger` (one line), `ShipmentsSelector`, `ShipmentsDomain` (+ `Constructor`), `ShipmentsService`, `CarrierBookingJob` (Queueable, AllowsCallouts) |
+| carrier   | `ICarrierGateway` / `CarrierGateway` (one POST per batch, with an `Idempotency-Key` that is the SHA-256 of the sorted Ids), External Credential `Carrier` (Custom protocol, no secret) and Named Credential `Carrier` (`https://carrier.example.com`)                        |
+| config    | `DI_Binding` rows for the selector, domain, service and gateway; `Trigger_Setting.Shipment` (active); `Shipment_Manager` permission set (shipment create/edit, order/account read, carrier principal access; no delete or View All)                                          |
+| tests     | `TestDataFactory`, `CarrierApiMock`, unit tests with Stub API mocks (domain, service, gateway), and `ShipmentsIntegrationTest` (real DML as least-privilege users)                                                                                                           |
 
-ADR 0007 records these decisions.
+Integration test results: 200 shipments saved as `Shipment_Manager` with 0 SOQL, at most 2 DML statements (the insert plus the Unit of Work savepoint), 1 queued job and 1 carrier call, and every shipment ends up `Booked`. A carrier 503 leads to 3 attempts, after which the shipments stay `Pending`. A zero weight is rejected by the domain. A user without the permission set is denied by user-mode DML. `bypass` skips the domain.
 
-## Next (after PR 5 merges)
+`scripts/org-setup.sh` now assigns permission sets from `example/` too.
 
-1. PR 6 `feat(example)` + docs: unpackaged `example/` directory (`Shipment__c`, `ShipmentTrigger`, selector, domain, service, `CarrierGateway`, `TestDataFactory`, `Shipment_Manager` permission set, binding records, `Carrier` Named Credential with no secrets), real-DML integration tests, README in the seven-section order, `docs/case-study.md`.
-2. PR 7 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there.
+## Next (after PR 6 merges)
+
+1. PR 7 `docs`: README in the seven-section order (problem, Mermaid diagram, 3-command quick start, usage from the example, design decisions table linking ADRs 0001–0007, testing, "Built with Claude Code"), and `docs/case-study.md`. Chad split docs from the example app (PR 6).
+2. PR 8 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there.
 
 ## Decisions made
 
@@ -57,6 +57,9 @@ ADR 0007 records these decisions.
 | Retry boundary             | Up to 2 immediate retries in the client; async backoff belongs to the caller (C)                                       | Async re-enqueue in the client; no retry                        | ADR 0007 |
 | Retries run out            | Throw `CalloutClientException` with attempts and last response                                                         | Return the last response                                        | ADR 0007 |
 | 429 handling               | Not retried synchronously; `getRetryAfterSeconds()` for the caller                                                     | Retry like a 5xx (original plan)                                | ADR 0007 |
+| Example booking flow       | After-insert → service enqueues `CarrierBookingJob` (Queueable) → gateway → UoW                                        | Synchronous invocable (a trigger can't call out anyway)         | handoff  |
+| Example credentials        | External Credential (Custom protocol, no secret) + Named Credential (SecuredEndpoint)                                  | Legacy Named Credential (deprecated model)                      | handoff  |
+| Docs vs example            | Separate PRs: example app (PR 6), README + case study (PR 7), release (PR 8)                                           | One PR as planned                                               | handoff  |
 
 ## Open risks
 
@@ -64,6 +67,7 @@ ADR 0007 records these decisions.
 
 ## Plan deviations
 
+- The plan had 7 PRs. It now has 8, because docs were split from the example app (Chad).
 - 429 is no longer retried synchronously, and the exception is `CalloutClientException` rather than `CalloutException` (ADR 0007).
 - The base domain class is `SObjectDomain`, not `Domain` as planned, to avoid shadowing `System.Domain`.
 - Each factory lands with its layer (`SelectorFactory` and `UnitOfWorkFactory` in PR 3, `DomainFactory` in PR 4) rather than all of them in PR 2, because each needs the interface it returns.
@@ -72,6 +76,9 @@ ADR 0007 records these decisions.
 ## Notes for the next session
 
 - More Apex traps found in PR 4: `bulk` is a reserved word (a constant named `BULK` fails to parse), Apex allows only one level of inner classes, and inner classes can't declare static members. PR 5 added more: `number` is reserved, `HttpRequest` has no `getTimeout()`, `JSON.deserialize` rejects `Map<String, Object>`, and macOS `sed` has no `\b` (use `perl -pi`).
+- PR 6 findings: in a scratch org the admin profile gets no field permissions on newly deployed fields, so user-mode queries run as the default test user fail with "No such column". A plain static SOQL query in a test failed the same way until `WITH SYSTEM_MODE` was added (observed; cause not confirmed). Integration tests therefore query their assertions `WITH SYSTEM_MODE` and do the real work as `runAs` users. Static mocks set before `Test.stopTest` are still in place when queued jobs run.
+- After deleting metadata, a plain `sf project deploy start` against `acl-dev` tries to delete it again from source tracking and fails. Deploy with `--source-dir force-app --source-dir example`.
+- Code Analyzer on PR 6: 0 High. `QueueableWithoutFinalizer` (Low) is deliberate, and the reason is in `CarrierBookingJob`'s ApexDoc (Finalizer recovery is C's showcase).
 - Code Analyzer on PR 5: 0 High. Two accepted Moderate findings: class-total complexity on `CalloutRequest` (one guard per builder input, as with `UnitOfWork`) and the four-parameter `CalloutClientException.failed`.
 - Candidate for README section 7 ("Built with Claude Code"): Code Analyzer's `TypeShadowsBuiltInNamespace` caught `Domain` vs `System.Domain` in PR 4, and design review caught `CalloutException` vs `System.CalloutException` before it compiled. Both were renamed, and ADRs 0006/0007 record why.
 
