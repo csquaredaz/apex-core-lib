@@ -1,6 +1,7 @@
 # apex-core-lib
 
 [![ci](https://github.com/csquaredaz/apex-core-lib/actions/workflows/ci.yml/badge.svg)](https://github.com/csquaredaz/apex-core-lib/actions/workflows/ci.yml)
+![Apex coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/csquaredaz/apex-core-lib/badges/coverage.json)
 ![API version](https://img.shields.io/badge/Salesforce%20API-68.0-00A1E0)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
