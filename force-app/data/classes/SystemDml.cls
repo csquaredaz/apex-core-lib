@@ -17,6 +17,15 @@ public without sharing class SystemDml implements IDml {
     Database.update(records, true, AccessLevel.SYSTEM_MODE);
   }
 
+  /**
+   * @description Upserts in system mode, all or none.
+   * @param records Records of one type.
+   * @param externalIdField The match key.
+   */
+  public void dmlUpsert(List<SObject> records, SObjectField externalIdField) {
+    Database.upsert(records, externalIdField, true, AccessLevel.SYSTEM_MODE);
+  }
+
   /** @description Deletes in system mode, all or none. @param records Records of one type. */
   public void dmlDelete(List<SObject> records) {
     Database.delete(records, true, AccessLevel.SYSTEM_MODE);
