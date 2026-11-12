@@ -45,9 +45,19 @@ public with sharing class StripInaccessibleDml implements IDml {
   public void dmlInsert(List<SObject> records) {
     List<SObject> stripped = strip(AccessType.CREATABLE, records, 'insert');
     wrapped.dmlInsert(stripped);
-    for (Integer i = 0; i < records.size(); i++) {
-      records[i].Id = stripped[i].Id;
-    }
+    copyIdsBack(stripped, records);
+  }
+
+  /**
+   * @description Strips fields the user can't both create and edit, upserts, then copies the Ids
+   * of created and matched records back. If the match key itself is stripped, the upsert fails.
+   * @param records Records of one SObject type.
+   * @param externalIdField The match key.
+   */
+  public void dmlUpsert(List<SObject> records, SObjectField externalIdField) {
+    List<SObject> stripped = strip(AccessType.UPSERTABLE, records, 'upsert');
+    wrapped.dmlUpsert(stripped, externalIdField);
+    copyIdsBack(stripped, records);
   }
 
   /**
@@ -64,6 +74,12 @@ public with sharing class StripInaccessibleDml implements IDml {
    */
   public void dmlDelete(List<SObject> records) {
     wrapped.dmlDelete(records);
+  }
+
+  private static void copyIdsBack(List<SObject> written, List<SObject> callers) {
+    for (Integer i = 0; i < callers.size(); i++) {
+      callers[i].Id = written[i].Id;
+    }
   }
 
   private List<SObject> strip(AccessType accessType, List<SObject> records, String operation) {

@@ -32,6 +32,15 @@ public interface IUnitOfWork {
    */
   void registerDirty(SObject record, List<SObjectField> dirtyFields);
 
+  /**
+   * @description Registers records to upsert, matched on `externalIdField`. Records may or may not
+   * have Ids. Added in 1.1.0.
+   * @param records Records of types in the commit order.
+   * @param externalIdField The match key: an External Id or other `idLookup` field, or `Id`. One
+   * key per SObject type per Unit of Work.
+   */
+  void registerUpsert(List<SObject> records, SObjectField externalIdField);
+
   /** @description Registers a record to delete. @param record A record with an Id. */
   void registerDeleted(SObject record);
 
@@ -50,8 +59,9 @@ public interface IUnitOfWork {
   void registerWork(IDoWork work);
 
   /**
-   * @description Commits everything in one savepoint: inserts and updates in commit order, deletes
-   * in reverse order, then registered work. Any failure rolls back all of it and rethrows.
+   * @description Commits everything in one savepoint: for each type in commit order its inserts
+   * then its upserts, then updates in commit order, deletes in reverse order, then registered work.
+   * Any failure rolls back all of it and rethrows.
    */
   void commitWork();
 }

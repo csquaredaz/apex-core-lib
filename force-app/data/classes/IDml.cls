@@ -18,6 +18,15 @@ public interface IDml {
   void dmlUpdate(List<SObject> records);
 
   /**
+   * @description Upserts the records, all or none, matching on `externalIdField`. Created and
+   * matched records both get their Ids set on the given instances. Added in 1.1.0.
+   * @param records Records of one SObject type.
+   * @param externalIdField The match key: an External Id or other `idLookup` field of that type,
+   * or its `Id` field.
+   */
+  void dmlUpsert(List<SObject> records, SObjectField externalIdField);
+
+  /**
    * @description Deletes the records, all or none.
    * @param records Records of one SObject type, each with an Id.
    */

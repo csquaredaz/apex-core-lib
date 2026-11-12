@@ -2,11 +2,12 @@
 private class UnitOfWorkTest {
   private static final List<SObjectType> COMMIT_ORDER = new List<SObjectType>{ Account.SObjectType, Order.SObjectType };
 
-  // Records every DML call in order and assigns fake Ids on insert, so ordering and relationship
-  // resolution can be asserted without the database.
+  // Records every DML call in order and assigns fake Ids on insert and on upsert of records
+  // without one, so ordering and relationship resolution can be asserted without the database.
   private class FakeDml implements IDml {
     private final List<String> log = new List<String>();
     private final Map<String, List<SObject>> recordsByCall = new Map<String, List<SObject>>();
+    private final Map<String, SObjectField> keyByCall = new Map<String, SObjectField>();
 
     public void dmlInsert(List<SObject> records) {
       for (SObject record : records) {
@@ -17,6 +18,16 @@ private class UnitOfWorkTest {
 
     public void dmlUpdate(List<SObject> records) {
       record('update', records);
+    }
+
+    public void dmlUpsert(List<SObject> records, SObjectField externalIdField) {
+      for (SObject record : records) {
+        if (record.Id == null) {
+          record.Id = FakeId.generate(record.getSObjectType());
+        }
+      }
+      record('upsert', records);
+      keyByCall.put('upsert ' + records[0].getSObjectType(), externalIdField);
     }
 
     public void dmlDelete(List<SObject> records) {
@@ -67,6 +78,28 @@ private class UnitOfWorkTest {
     return null;
   }
 
+  private static String expectUpsertError(UnitOfWork uow, List<SObject> records, SObjectField key) {
+    try {
+      uow.registerUpsert(records, key);
+      Assert.fail('Expected UnitOfWorkException');
+    } catch (UnitOfWorkException e) {
+      return e.getMessage();
+    }
+    return null;
+  }
+
+  private static List<Order> ordersWithReferences(Id accountId, Integer count, String name) {
+    List<Order> orders = new List<Order>();
+    for (Integer i = 0; i < count; i++) {
+      Order row = DataTestFixtures.draftOrder();
+      row.AccountId = accountId;
+      row.OrderReferenceNumber = 'REF-' + String.valueOf(i).leftPad(3, '0');
+      row.Name = name;
+      orders.add(row);
+    }
+    return orders;
+  }
+
   private static Account withId() {
     return new Account(Id = FakeId.generate(Account.SObjectType), Name = 'Existing');
   }
@@ -110,6 +143,117 @@ private class UnitOfWorkTest {
       dml.log,
       'Updates parents first; deletes children first'
     );
+  }
+
+  // ---- Upserts (fake DML) ----
+
+  @IsTest
+  static void commitWork_upsertsFollowEachTypesInsertsAndPrecedeUpdates() {
+    FakeDml dml = new FakeDml();
+    UnitOfWork uow = new UnitOfWork(COMMIT_ORDER, dml);
+    Account parent = new Account(Name = 'New');
+    uow.registerDeleted(new Order(Id = FakeId.generate(Order.SObjectType)));
+    uow.registerDirty(withId());
+    uow.registerUpsert(new List<Order>{ DataTestFixtures.draftOrder() }, Order.OrderReferenceNumber);
+    uow.registerNew(DataTestFixtures.draftOrder(), Order.AccountId, parent);
+    uow.registerUpsert(new List<Account>{ withId() }, Account.Id);
+    uow.registerNew(parent);
+
+    uow.commitWork();
+
+    Assert.areEqual(
+      new List<String>{
+        'insert Account',
+        'upsert Account',
+        'insert Order',
+        'upsert Order',
+        'update Account',
+        'delete Order'
+      },
+      dml.log,
+      'Per type: inserts then upserts; then updates; then deletes in reverse'
+    );
+    Assert.areEqual(Order.OrderReferenceNumber, dml.keyByCall.get('upsert Order'), 'The registered key is passed');
+  }
+
+  @IsTest
+  static void registerUpsert_childOfAnUpsertedParent_resolvesTheLookup() {
+    FakeDml dml = new FakeDml();
+    UnitOfWork uow = new UnitOfWork(COMMIT_ORDER, dml);
+    Account parent = new Account(Name = 'Upserted');
+    Order child = DataTestFixtures.draftOrder();
+    uow.registerUpsert(new List<Account>{ parent }, Account.Id);
+    uow.registerUpsert(new List<Order>{ child }, Order.OrderReferenceNumber);
+    uow.registerRelationship(child, Order.AccountId, parent);
+
+    uow.commitWork();
+
+    Assert.isNotNull(parent.Id, 'The parent was upserted first');
+    Assert.areEqual(parent.Id, child.AccountId, 'The child resolved its lookup to the upserted parent');
+  }
+
+  @IsTest
+  static void registerUpsert_200RecordsInTwoCalls_isOneUpsertStatement() {
+    FakeDml dml = new FakeDml();
+    UnitOfWork uow = new UnitOfWork(COMMIT_ORDER, dml);
+    List<Account> accounts = DataTestFixtures.accounts(200);
+    uow.registerUpsert(new List<Account>{ accounts[0] }, Account.Id);
+    accounts.remove(0);
+    uow.registerUpsert(accounts, Account.Id);
+
+    uow.commitWork();
+
+    Assert.areEqual(new List<String>{ 'upsert Account' }, dml.log, 'One upsert for the type');
+    Assert.areEqual(200, dml.recordsByCall.get('upsert Account').size(), 'Every registered record');
+  }
+
+  @IsTest
+  static void registerUpsert_emptyList_spendsNoDml() {
+    FakeDml dml = new FakeDml();
+    UnitOfWork uow = new UnitOfWork(COMMIT_ORDER, dml);
+    uow.registerUpsert(new List<Account>(), Account.Id);
+
+    uow.commitWork();
+
+    Assert.areEqual(0, dml.log.size(), 'Nothing to write');
+    Assert.areEqual(0, Limits.getDmlStatements(), 'Not even a savepoint');
+  }
+
+  @IsTest
+  static void registerUpsert_invalidArguments_throw() {
+    UnitOfWork uow = new UnitOfWork(COMMIT_ORDER, new FakeDml());
+    List<Account> accounts = DataTestFixtures.accounts(1);
+
+    Assert.isTrue(expectUpsertError(uow, null, Account.Id).contains('needs records'), 'Null records');
+    Assert.isTrue(expectUpsertError(uow, accounts, null).contains('needs records'), 'Null key');
+    Assert.isTrue(
+      expectUpsertError(uow, new List<Contact>{ new Contact(LastName = 'Out') }, Contact.Id)
+        .contains('not in this Unit of Work'),
+      'Type outside the commit order'
+    );
+    Assert.isTrue(
+      expectUpsertError(uow, accounts, Account.Name)
+        .contains('Name is not an External Id or idLookup field of Account'),
+      'Not an idLookup field'
+    );
+    Assert.isTrue(
+      expectUpsertError(uow, accounts, Order.OrderReferenceNumber).contains('of Account'),
+      'A field of another type'
+    );
+  }
+
+  @IsTest
+  static void registerUpsert_secondKeyForTheSameType_throws() {
+    UnitOfWork uow = new UnitOfWork(COMMIT_ORDER, new FakeDml());
+    uow.registerUpsert(new List<Order>{ DataTestFixtures.draftOrder() }, Order.Id);
+
+    String message = expectUpsertError(
+      uow,
+      new List<Order>{ DataTestFixtures.draftOrder() },
+      Order.OrderReferenceNumber
+    );
+
+    Assert.isTrue(message.contains('already upserted by Id'), message);
   }
 
   @IsTest
@@ -333,6 +477,56 @@ private class UnitOfWorkTest {
 
     Assert.areEqual(0, [SELECT COUNT() FROM Account], 'The parent insert was rolled back');
     Assert.isNull(account.Id, 'The rolled-back Id is cleared so it cannot be reused');
+  }
+
+  @IsTest
+  static void commitWork_realDml_upsertTwiceByReference_updatesTheSameRows() {
+    Account account = new Account(Name = 'Customer');
+    IUnitOfWork first = new UnitOfWork(COMMIT_ORDER);
+    first.registerNew(account);
+    List<Order> created = ordersWithReferences(null, 200, 'First');
+    first.registerUpsert(created, Order.OrderReferenceNumber);
+    for (Order row : created) {
+      first.registerRelationship(row, Order.AccountId, account);
+    }
+    first.commitWork();
+
+    Test.startTest();
+    IUnitOfWork second = new UnitOfWork(COMMIT_ORDER);
+    List<Order> again = ordersWithReferences(account.Id, 200, 'Second');
+    second.registerUpsert(again, Order.OrderReferenceNumber);
+    second.commitWork();
+    Integer dmlStatements = Limits.getDmlStatements();
+    Test.stopTest();
+
+    Assert.areEqual(200, [SELECT COUNT() FROM Order], 'Matched on the reference, so no duplicates');
+    Assert.areEqual(200, [SELECT COUNT() FROM Order WHERE Name = 'Second'], 'Every row was updated');
+    Assert.areEqual(created[199].Id, again[199].Id, 'Matched records get the existing Id');
+    Assert.areEqual(2, dmlStatements, 'Savepoint plus one upsert');
+  }
+
+  @IsTest
+  static void commitWork_failsAfterAnUpsert_rollsBackAndClearsOnlyAssignedIds() {
+    Account existing = new Account(Name = 'Existing');
+    insert existing;
+    Id existingId = existing.Id;
+    existing.Name = 'Renamed';
+    Account created = new Account(Name = 'Created');
+    IUnitOfWork uow = new UnitOfWork(COMMIT_ORDER);
+    uow.registerUpsert(new List<Account>{ existing, created }, Account.Id);
+    uow.registerNew(new Order(Status = 'Draft'), Order.AccountId, created); // EffectiveDate is required
+
+    try {
+      uow.commitWork();
+      Assert.fail('Expected DmlException');
+    } catch (DmlException e) {
+      Assert.isTrue(e.getMessage().contains('REQUIRED_FIELD_MISSING'), e.getMessage());
+    }
+
+    Assert.areEqual(1, [SELECT COUNT() FROM Account], 'The created account was rolled back');
+    Assert.areEqual('Existing', [SELECT Name FROM Account WHERE Id = :existingId].Name, 'The update was rolled back');
+    Assert.isNull(created.Id, 'The Id the upsert assigned is cleared');
+    Assert.areEqual(existingId, existing.Id, 'A record that already had an Id keeps it');
   }
 
   @IsTest

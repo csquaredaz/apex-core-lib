@@ -91,4 +91,27 @@ private class StripInaccessibleDmlTest {
       Assert.isTrue(e.getMessage().contains('wrapped IDml'), e.getMessage());
     }
   }
+
+  @IsTest
+  static void dmlUpsert_fieldWithoutAccess_stripsLogsAndCopiesIdsBack() {
+    User restricted = DataTestFixtures.restrictedUser(true);
+    RecordingLogger log = new RecordingLogger();
+    Account existing = new Account(Name = 'Before');
+    Account created = new Account(Name = 'New', Phone = '555-0101');
+
+    System.runAs(restricted) {
+      IDml dml = new StripInaccessibleDml(new UserModeDml(), log);
+      dml.dmlInsert(new List<Account>{ existing });
+      existing.Name = 'After';
+      existing.Phone = '555-0100';
+      dml.dmlUpsert(new List<Account>{ existing, created }, Account.Id);
+    }
+
+    Assert.isNotNull(created.Id, 'The created record\'s Id is copied back');
+    Assert.areEqual(2, [SELECT COUNT() FROM Account WHERE Phone = NULL], 'Phone was stripped from both');
+    Assert.areEqual('After', [SELECT Name FROM Account WHERE Id = :existing.Id].Name, 'The match was updated');
+    List<RecordingLogger.Entry> warnings = log.entries(LoggingLevel.WARN);
+    Assert.areEqual(1, warnings.size(), 'One warning for the upsert');
+    Assert.isTrue(warnings[0].message.contains('upsert of Account: Phone'), warnings[0].message);
+  }
 }

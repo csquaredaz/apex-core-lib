@@ -28,7 +28,7 @@ Each decision is recorded as an ADR with the rejected alternatives. The design i
 
 **Result.**
 
-- 183 Apex tests with 100% coverage, asserting behaviour rather than lines: 200-record bulk cases, negative paths, Stub API mocks for isolation, and real-DML integration tests as least-privilege users that assert governor-limit use (0 SOQL and at most 2 DML statements to save 200 records).
+- 195 Apex tests with 100% coverage, asserting behaviour rather than lines: 200-record bulk cases, negative paths, Stub API mocks for isolation, and real-DML integration tests as least-privilege users that assert governor-limit use (0 SOQL and at most 2 DML statements to save 200 records).
 - CI on GitHub Actions: Prettier, Code Analyzer with zero High findings, gitleaks, and a fresh scratch org per ready PR through JWT auth. It deploys, runs every test and gates on coverage, with a free, self-hosted coverage badge. Merges reuse a green PR result when the merged tree is identical, which halves the scratch-org cost on a free Dev Hub.
 - Eight ADRs, and every free-only omission documented where a reader would look for it.
 

@@ -26,4 +26,19 @@ private class SystemDmlTest {
     Assert.areEqual('Audit (updated)', name, 'Updated');
     Assert.areEqual(0, [SELECT COUNT() FROM Account], 'Deleted');
   }
+
+  @IsTest
+  static void dmlUpsert_userWithoutFieldAccess_stillWritesTheField() {
+    Account existing = new Account(Name = 'Existing');
+    insert existing;
+    Account created = new Account(Name = 'Created', Phone = '555-0101');
+    existing.Phone = '555-0100';
+
+    System.runAs(DataTestFixtures.restrictedUser(true)) {
+      new SystemDml().dmlUpsert(new List<Account>{ existing, created }, Account.Id);
+    }
+
+    Assert.areEqual('555-0100', [SELECT Phone FROM Account WHERE Id = :existing.Id].Phone, 'Matched and updated');
+    Assert.areEqual('555-0101', [SELECT Phone FROM Account WHERE Id = :created.Id].Phone, 'Created');
+  }
 }

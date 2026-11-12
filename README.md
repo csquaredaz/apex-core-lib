@@ -63,6 +63,8 @@ sf package install --package 04tak000000u0zpAAA --target-org <alias> --wait 20 -
 
 It installs in any org, including production. Versions not yet promoted install only in scratch orgs and sandboxes. In a consumer project, declare the dependency in `sfdx-project.json` as `"dependencies": [{ "package": "apex-core-lib@1.0.0-1" }]`, with that alias mapped to the `04t` Id. The test kit (`Mocks`, `FakeId`, `RecordingLogger`) is usable from consumer tests once the package is installed.
 
+**Upgrading to 1.1.0:** 1.1.0 adds `dmlUpsert` to `IDml` and `registerUpsert` to `IUnitOfWork` ([CHANGELOG](CHANGELOG.md), ADR 0009). If you implement either interface by hand, add the method to your class before you upgrade. Stub API mocks are unaffected.
+
 ## Usage
 
 The [`example/`](example) directory is a complete, unpackaged app: shipments for orders, booked with a fictional carrier. Bind its classes with metadata rows rather than code:
@@ -139,6 +141,14 @@ CalloutRequest request = CalloutRequest.post('Carrier', '/v1/bookings')
 CalloutResponse response = ((ICalloutClient) Application.Service.newInstance(ICalloutClient.class)).send(request);
 ```
 
+For idempotent writes, such as re-delivered events, register upserts on an external Id. Each type's upserts run after its inserts, so `registerRelationship` also works on an upserted parent (`Log__c` and `Log_Key__c` stand in for your own object and key):
+
+```apex
+IUnitOfWork unitOfWork = Application.UnitOfWork.newInstance(new List<SObjectType>{ Log__c.SObjectType });
+unitOfWork.registerUpsert(rows, Log__c.Log_Key__c); // one statement; matched rows are updated, not duplicated
+unitOfWork.commitWork();
+```
+
 To switch the shipment trigger off in production without a deploy, set `Trigger_Setting.Shipment.Is_Active__c` to false. To swap the logger for `apex-platform-logging`, add one `DI_Binding__mdt` row for `ILogger`.
 
 ## Design decisions
@@ -153,6 +163,7 @@ To switch the shipment trigger off in production without a deploy, set `Trigger_
 | Triggers              | A domain constructor class per domain, a metadata kill switch, and a depth guard of 2 with logged skips   | `initialise(records)`; a run-once flag                        | [0006](docs/adr/0006-trigger-framework.md)              |
 | Callouts              | Up to 2 immediate retries on idempotent requests; throw when retries run out; no synchronous retry on 429 | Async backoff in the client; retrying 429                     | [0007](docs/adr/0007-callout-retry-policy.md)           |
 | CI budget             | A merge to `main` reuses the PR's scratch-org result when the tree is identical                           | A second scratch org per merge; scheduled `main` runs         | [0008](docs/adr/0008-reuse-pr-scratch-org-results.md)   |
+| Upsert (1.1.0)        | Add `dmlUpsert` / `registerUpsert` to the existing interfaces as a minor version                          | Extension interfaces; 2.0.0; a consumer-owned store           | [0009](docs/adr/0009-upsert-in-a-minor-version.md)      |
 
 Deliberately omitted, each with its reason recorded where a reader would look for it:
 
@@ -168,7 +179,7 @@ Deliberately omitted, each with its reason recorded where a reader would look fo
 | Apex integration (real DML) | 200 shipments saved as a least-privilege user → trigger → domain → Queueable → carrier → commit, with 0 SOQL and at most 2 DML statements; a user without access is denied; a carrier outage leaves shipments `Pending` | `npm run org:test`                        |
 | Static analysis             | Zero High or Critical Code Analyzer findings; Prettier; gitleaks (pre-commit hook and CI)                                                                                                                               | `npm run analyze`, `npm run format:check` |
 
-183 Apex tests and 100% coverage. Coverage is a floor (90%) in CI, not the goal. Tests assert behaviour, including bulk (200-record) cases and negative paths. CI runs static checks on every PR. On ready PRs it also creates a fresh scratch org through JWT auth, deploys, runs every Apex test, gates on all passing and on coverage, and deletes the org. A merge to `main` does the same, unless its tree is identical to a PR head that already passed, in which case it reuses that result (ADR 0008).
+195 Apex tests and 100% coverage. Coverage is a floor (90%) in CI, not the goal. Tests assert behaviour, including bulk (200-record) cases and negative paths. CI runs static checks on every PR. On ready PRs it also creates a fresh scratch org through JWT auth, deploys, runs every Apex test, gates on all passing and on coverage, and deletes the org. A merge to `main` does the same, unless its tree is identical to a PR head that already passed, in which case it reuses that result (ADR 0008).
 
 ## Built with Claude Code
 

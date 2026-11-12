@@ -9,7 +9,8 @@ name: release
 #            irreversible (a promoted version can't be deleted), so it is never automatic.
 #
 # The tag must match the major.minor.patch of versionNumber in sfdx-project.json, so the tag and
-# the package version can't drift apart.
+# the package version can't drift apart. Both jobs add the version's CHANGELOG.md section to the
+# release notes (scripts/changelog-section.sh); a tag without one fails before the build starts.
 
 on:
   push:
@@ -67,6 +68,10 @@ jobs:
               process.exit(1);
             }
           '
+
+      # Fails before any package version create is spent, so every release has reviewed notes.
+      - name: Check CHANGELOG.md has this version
+        run: bash scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" > /dev/null
 
       # Same JWT bearer auth as ci.yml; every value comes from repository secrets.
       - name: Authenticate Dev Hub (JWT)
@@ -128,6 +133,8 @@ jobs:
             echo
             echo "Beta versions install only in scratch orgs and sandboxes. Promote by running the"
             echo "release workflow by hand with this Id."
+            echo
+            bash scripts/changelog-section.sh "${GITHUB_REF_NAME#v}"
           } > notes.md
           gh release create "$GITHUB_REF_NAME" --prerelease --title "${PACKAGE} ${GITHUB_REF_NAME} (beta)" --notes-file notes.md
 
@@ -189,6 +196,11 @@ jobs:
         # Rewrite the notes too: the build job's beta wording ("scratch orgs and sandboxes only")
         # is wrong once the version is released.
         run: |
+          # The version is already promoted, so a missing CHANGELOG section only warns.
+          changes=$(bash scripts/changelog-section.sh "${TAG#v}") || {
+            echo "::warning::CHANGELOG.md has no ${TAG} section; the release notes omit the changes."
+            changes=""
+          }
           {
             echo "Released unlocked package version, built from \`${TAG}\`."
             echo
@@ -197,6 +209,8 @@ jobs:
             echo '```'
             echo
             echo "Installs in any org, including production."
+            echo
+            printf '%s\n' "$changes"
           } > notes.md
           gh release edit "$TAG" --prerelease=false --latest --title "${PACKAGE} ${TAG}" --notes-file notes.md
 
