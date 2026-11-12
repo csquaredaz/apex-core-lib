@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–8)
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 3 (v1.0.0 and R1)
 
 ## Done
 
@@ -14,26 +14,19 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–8)
 - PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
 - Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Resume here (PR 8 draft, blocked on the scratch-org budget)
+## Done in session 3
 
-PR 7 merged (`041f99e`). Its `main` scratch-org job **failed only because the Dev Hub hit its daily scratch-org signup limit** (`LIMIT_EXCEEDED`, 0/6 left on 2026-11-12 after seven PR runs). The code is identical to the PR 7 head, which passed. The badge job was skipped, so the badge stays at 100%.
+- PRs 4–8 merged; `main` at `de0ed55` is green. The PR 8 merge took the ADR 0008 **reuse** path (0 orgs) and also covered the PR 7 tree, so the failed run 43262725125 doesn't need a re-run.
+- Tag `v1.0.0` pushed (Chad approved). `release.yml` build passed: version `1.0.0-1`, `04tak000000u0zpAAA`, 99% package coverage, `HasPassedCodeCoverageCheck` true, GitHub pre-release published.
+- **The package build uses no daily scratch-org signup** (DailyScratchOrgs stayed 5/6; Package2VersionCreates went 6 → 5).
+- **R1 resolved:** in a fresh scratch org with the beta installed, a throwaway consumer test class (kept outside the repo) using `FakeId`, `RecordingLogger`, `Mocks` and `Application.Service.setMock` deployed and passed. The test kit stays `@IsTest`.
+- README quick start gained the install command, and `sfdx-project.json` gained the `apex-core-lib@1.0.0-1` alias.
 
-PR 8 `ci(release)` is on branch `ci/release`, as a **draft** (static checks only, no org):
+## Resume here
 
-- `.github/workflows/release.yml`:
-  - **build** (on tag `v*`): checks that the tag equals `versionNumber` major.minor.patch, runs `sf package version create --code-coverage --installation-key-bypass`, gates on `HasPassedCodeCoverageCheck`, and publishes a GitHub pre-release with the `04t` install command.
-  - **promote** (`workflow_dispatch`): takes `version_id`, `tag` and `confirm=PROMOTE`, runs `sf package version promote`, then marks the release as latest. It is manual because promotion is irreversible.
-- `sfdx-project.json`: `1.0.0.NEXT` / `ver 1.0`, plus `definitionFile` so the build org has Orders enabled (core tests use `Order`).
-- Verified locally: CLI flags and report JSON fields (read from the `@salesforce/packaging` source), the tag-match and `04t` checks, and that the YAML parses. Not verified: an actual version build (no version created yet; 6/6 package creates left).
-
-**CI budget fix (ADR 0008, Chad chose option b):** `ci.yml` has a new `reuse` job. On a push to `main` it reuses the PR's scratch-org result when the merge commit's tree equals the PR head's tree and that head has a green scratch-org run. Otherwise it creates a fresh org, as before. A dry run against the real merges `041f99e` and `26592ca` found the matching green runs and their 100% coverage, so both merges would have cost 0 orgs. The job conditions now use `!cancelled()`. Back-port the job to E's `sf-repo-scaffold` CI template.
-
-**When the budget frees up (rolling 24 h; check with `sf org list limits --target-org devhub`), about 2 orgs are needed:**
-
-1. Mark PR 8 ready (1 org). Chad merges. The `main` run should take the **reuse** path (0 orgs) and also proves the PR 7 tree, so re-running the failed job 43262725125 isn't needed.
-2. **Ask Chad before tagging** `v1.0.0`: it creates a package version and a public-facing GitHub release. The release workflow's package build uses a build org, not a scratch-org signup (to confirm on the first run).
-3. R1 probe (1 org): a fresh scratch org, install the beta `04t`, deploy a probe test class that uses `Mocks`, `FakeId` and `RecordingLogger`, and run it. If it fails, fall back to plain `public` classes (see R1).
-4. Add the install line to the README quick start. Chad promotes through the workflow when ready.
+1. Chad promotes `1.0.0-1` when ready: run `release.yml` by hand with `version_id=04tak000000u0zpAAA`, `tag=v1.0.0`, `confirm=PROMOTE`. Never Claude.
+2. Definition of done (below), then ask Chad about the workspace `CLAUDE.md` status table and `roadmap.md`, and before making the repo public.
+3. Back-port to E before repo B: the ADR 0008 `reuse` job and `!cancelled()` conditions, the test-result filename fix, the RunLocalTests skip, the `badges` job, and a custom PMD ruleset for `method_condition_result` test names.
 
 ## Next (after v1.0.0)
 
@@ -65,7 +58,7 @@ Repo A's definition of done: CI green, README complete, ADRs written, Code Analy
 
 ## Open risks
 
-- **R1:** can consumer repos reference `@IsTest` classes (`Mocks`, `RecordingLogger`, `FakeId`) from a no-namespace unlocked package? Only testable with a real package version installed in a consumer org, so verify at the first package version (PR 7) or B's first session. Fallback: make them normal `public` classes with their own tests.
+- **R1 (resolved 2026-11-12):** consumer tests can use the `@IsTest` test kit from the installed no-namespace package. Proven with `1.0.0-1`.
 
 ## Plan deviations
 
