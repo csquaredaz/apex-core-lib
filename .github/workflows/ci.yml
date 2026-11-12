@@ -186,21 +186,29 @@ jobs:
           fi
           mkdir -p tests/apex
           # Keep going on test failures so the summary is still written; the gate below fails the job.
+          # Stdout is dropped because it names the scratch org (Id, username, instance); results are
+          # read from --output-dir instead, and scrubbed below before they become an artifact.
           sf apex run test \
             --target-org ci-org \
             --test-level RunLocalTests \
             --code-coverage \
-            --result-format human \
+            --result-format json \
             --output-dir tests/apex \
-            --wait 30 || true
+            --wait 30 > /dev/null || true
+          # The JUnit report repeats the org details and nothing reads it.
+          rm -f tests/apex/*-junit.xml
           # Coverage goes to the job summary, an artifact and (on main) the badge job; no third-party
           # service. The CLI writes test-result-<runId>.json, with the run Id in test-run-id.txt.
           # Gate: every test passes and org-wide coverage is at least MIN_COVERAGE (CLAUDE.md floor).
           MIN_COVERAGE=90 node -e '
             const fs = require("fs");
             const runId = fs.readFileSync("tests/apex/test-run-id.txt", "utf8").trim();
-            const j = JSON.parse(fs.readFileSync(`tests/apex/test-result-${runId}.json`, "utf8"));
+            const file = `tests/apex/test-result-${runId}.json`;
+            const j = JSON.parse(fs.readFileSync(file, "utf8"));
             const s = (j.result || j).summary;
+            // Drop the org details before the file is uploaded; the reuse job needs only coverage.
+            for (const key of ["hostname", "orgId", "userId", "username"]) delete s[key];
+            fs.writeFileSync(file, JSON.stringify(j, null, 2));
             const coverage = parseInt(s.orgWideCoverage, 10) || 0;
             const min = Number(process.env.MIN_COVERAGE);
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
