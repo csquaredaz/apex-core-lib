@@ -9,11 +9,14 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 - Repository scaffolded from `apex-standards:sf-repo-scaffold`. API 68.0 confirmed against the Dev Hub.
 - ADR 0001 (unlocked package, no namespace) moved here from the workspace.
 - Plan approved: file tree, class list, test plan and a 7-PR delivery sequence.
+- PR 1 merged: ADRs 0002 and 0003, the coverage-badge job, Orders enabled, and CI that skips Apex tests until a test class exists.
+- PR 2 `feat(di)` (open): `Application.Service`, `ServiceFactory`, `BindingRegistry`, `DI_Binding__mdt`, the `ILogger` and `IAlertSink` ports with `DebugLogger` / `NoOpAlertSink`, the `Alert` value type, and the test kit `Mocks`, `FakeId`, `RecordingLogger`. ADR 0004. The CI test step reads the real result file and gates on all tests passing and at least 90% coverage. 36 tests, 100% coverage in the dev org.
 
 ## Next
 
-1. Land PR 1 `chore`: ADRs 0002 (lean FFLIB core) and 0003 (coverage badge), the `badges`-branch CI job, and `orderSettings.enableOrders` in the scratch definition.
-2. PR 2 `feat(di)`: factories, `BindingRegistry`, `DI_Binding__mdt`, ports with default adapters, and `Mocks` / `FakeId`. Verify risk R1 here.
+1. Land PR 2.
+2. PR 3 `feat(data)`: `SelectorFactory` + `SObjectSelector`, `IDml` / `SystemDml` / `SecureDml`, `UnitOfWorkFactory` + `UnitOfWork`. ADR 0005 (user mode by default).
+3. PR 4 `feat(triggers)`: `DomainFactory`, `Domain`, `TriggerDispatcher`, `TriggerContext`, `Trigger_Setting__mdt`.
 
 ## Decisions made
 
@@ -24,16 +27,26 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 | CI sharing                 | Per-repo copy from the scaffold                                                                                        | Reusable workflow in a central repo                             | roadmap  |
 | Domain objects             | The package ships none. Core tests use `Account` / `Order`. `Shipment__c` lives in the unpackaged `example/` directory | Custom objects in the package                                   | ADR 0002 |
 | Inbound-adapter port for C | Deferred to C. Adding an interface later is a minor version bump                                                       | Designing it now, before C exists                               | handoff  |
+| DI resolution              | Service Locator over a registry with `DI_Binding__mdt` overrides                                                       | Code-only registry per consumer, constructor injection only     | ADR 0004 |
+| `ILogger.error` signature  | Keep `error(String, Exception)` and ship `RecordingLogger` as the test double                                          | `Object cause`, an `ErrorDetail` value type                     | ADR 0002 |
 
 ## Open risks
 
-- **R1:** can consumer repos reference `@isTest` classes (`Mocks`) from a no-namespace unlocked package? Fallback: make `Mocks` a normal `public` class with its own tests.
-- **R3:** `Order` in a scratch org needs `orderSettings.enableOrders`. Confirm on the first org.
+- **R1:** can consumer repos reference `@IsTest` classes (`Mocks`, `RecordingLogger`, `FakeId`) from a no-namespace unlocked package? Only testable with a real package version installed in a consumer org, so verify at the first package version (PR 7) or B's first session. Fallback: make them normal `public` classes with their own tests.
+
+## Plan deviations
+
+- Each factory lands with its layer (`SelectorFactory` and `UnitOfWorkFactory` in PR 3, `DomainFactory` in PR 4) rather than all of them in PR 2, because each needs the interface it returns.
 
 ## Notes for the next session
 
+- **Stub API limits (verified in a scratch org):** no inner types, no method that takes the base `Exception` type, and `@IsTest` classes can't be `virtual`. Mock top-level interfaces only.
+- Apex is case-insensitive, so a local variable named like a class (`Alert alert`) breaks static references. Prettier formats Apex at 2-space indentation; match it in any scripted edit.
+- `sf apex run test --output-dir` writes `test-result-<runId>.json` (run Id in `test-run-id.txt`), not `test-result.json`. The scaffold template's summary step has this bug: back-port the fix to E.
+- Code Analyzer: 0 High. 36 Moderate `MethodNamingConventions` findings come from PMD rejecting the skill's `method_condition_result` test names. Fix with a custom PMD ruleset in E's scaffold template, then here.
+- CI test logs print the throwaway scratch org's Id and username (human result format). Low risk because the org is deleted, but worth dropping before the repo goes public.
+- Local dev scratch org: alias `acl-dev`, 7 days. Local signup needs `SF_SCRATCH_SIGNUP_CONNECTED_APP=PlatformCLI` and `SF_SCRATCH_SIGNUP_CALLBACK_URL=http://localhost:1717/OauthRedirect`, the same as CI.
 - The old name `csquaredaz/apex-core-lib` redirected to the renamed `legacy-apex-core-lib`. Creating the new repo ended that redirect. Always check a repo name with `gh repo view` before pushing.
-- An empty `force-app/` deploys cleanly (no `--source-dir`, so the CLI returns empty). `RunLocalTests` with zero tests fails (`INVALID_INPUT`), so CI skips the test step until a test class exists. Scratch-org signup through `PlatformCLI` was proven in CI on PR 1. Back-port both CI fixes to E's scaffold template.
+- `RunLocalTests` with zero tests fails (`INVALID_INPUT`), so CI skips the test step until a test class exists. Back-port that and the `badges` job to E's scaffold template.
 - Package promotion stays a manual `workflow_dispatch` because promotion is irreversible.
 - Iterate as draft PRs (static checks only) and mark each one ready once, so it costs about one scratch org per PR.
-- Back-port the `badges`-branch job to E's scaffold template once it's proven here.
