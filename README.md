@@ -72,8 +72,9 @@ The [`example/`](example) directory is a complete, unpackaged app: shipments for
 | Shipments_Selector | Selector  | `Shipment__c`       | `ShipmentsSelector`           |
 | Shipments_Domain   | Domain    | `Shipment__c`       | `ShipmentsDomain.Constructor` |
 | Shipments_Service  | Service   | `IShipmentsService` | `ShipmentsService`            |
+| Carrier_Gateway    | Service   | `ICarrierGateway`   | `CarrierGateway`              |
 
-The trigger holds no logic, and the domain holds the behaviour:
+The trigger holds no logic, and the domain holds the behaviour (shortened; the full class also defaults `Status__c` and requests booking after insert):
 
 ```apex
 trigger ShipmentTrigger on Shipment__c(before insert, after insert /* … every event */) {
@@ -102,18 +103,40 @@ public with sharing class ShipmentsDomain extends SObjectDomain {
 }
 ```
 
-A service queries through a selector, calls out through a gateway, and writes through a Unit of Work, all in user mode:
+After insert, the domain asks the service to book the new shipments, and the service enqueues `CarrierBookingJob` (triggers can't call out). The job's service method queries through a selector, calls out through a gateway, and writes through a Unit of Work, all in user mode (from `ShipmentsService.bookShipments`):
 
 ```apex
-List<Shipment__c> pending = ((IShipmentsSelector) Application.Selector.newInstance(Shipment__c.SObjectType))
-  .selectPendingById(shipmentIds);
+IShipmentsSelector selector = (IShipmentsSelector) Application.Selector.newInstance(Shipment__c.SObjectType);
+List<Shipment__c> pending = selector.selectPendingById(shipmentIds);
 
-CalloutResponse response = ((ICalloutClient) Application.Service.newInstance(ICalloutClient.class))
-  .send(CalloutRequest.post('Carrier', '/v1/bookings').withJsonBody(payload).withIdempotencyKey(key));
+Map<Id, String> referencesById;
+try {
+  referencesById = ((ICarrierGateway) Application.Service.newInstance(ICarrierGateway.class)).book(pending);
+} catch (CalloutClientException e) {
+  ((ILogger) Application.Service.newInstance(ILogger.class))
+    .error('Carrier booking failed for ' + pending.size() + ' shipment(s); they stay Pending.', e);
+  return;
+}
 
 IUnitOfWork unitOfWork = Application.UnitOfWork.newInstance(new List<SObjectType>{ Shipment__c.SObjectType });
-unitOfWork.registerDirty(new Shipment__c(Id = shipmentId, Status__c = 'Booked'));
+for (Shipment__c shipment : pending) {
+  String reference = referencesById.get(shipment.Id);
+  if (reference != null) {
+    unitOfWork.registerDirty(
+      new Shipment__c(Id = shipment.Id, Status__c = ShipmentsDomain.STATUS_BOOKED, Carrier_Reference__c = reference)
+    );
+  }
+}
 unitOfWork.commitWork();
+```
+
+The gateway owns the wire format and sends one idempotent request for the whole batch through the callout client (from `CarrierGateway.book`):
+
+```apex
+CalloutRequest request = CalloutRequest.post('Carrier', '/v1/bookings')
+  .withJsonBody(payload)
+  .withIdempotencyKey(idempotencyKey(shipments));
+CalloutResponse response = ((ICalloutClient) Application.Service.newInstance(ICalloutClient.class)).send(request);
 ```
 
 To switch the shipment trigger off in production without a deploy, set `Trigger_Setting.Shipment.Is_Active__c` to false. To swap the logger for `apex-platform-logging`, add one `DI_Binding__mdt` row for `ILogger`.
@@ -139,11 +162,11 @@ Deliberately omitted, each with its reason recorded where a reader would look fo
 
 ## Testing
 
-| Layer                       | What it proves                                                                                                                                                                                                          | Run it             |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| Apex unit (Stub API mocks)  | Factories, dispatcher, domain hooks, retry rules and services in isolation, with fake trigger contexts and scripted HTTP mocks                                                                                          | `npm run org:test` |
-| Apex integration (real DML) | 200 shipments saved as a least-privilege user → trigger → domain → Queueable → carrier → commit, with 0 SOQL and at most 2 DML statements; a user without access is denied; a carrier outage leaves shipments `Pending` | `npm run org:test` |
-| Static analysis             | Zero High or Critical Code Analyzer findings; Prettier; gitleaks                                                                                                                                                        | `npm run analyze`  |
+| Layer                       | What it proves                                                                                                                                                                                                          | Run it                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Apex unit (Stub API mocks)  | Factories, dispatcher, domain hooks, retry rules and services in isolation, with fake trigger contexts and scripted HTTP mocks                                                                                          | `npm run org:test`                        |
+| Apex integration (real DML) | 200 shipments saved as a least-privilege user → trigger → domain → Queueable → carrier → commit, with 0 SOQL and at most 2 DML statements; a user without access is denied; a carrier outage leaves shipments `Pending` | `npm run org:test`                        |
+| Static analysis             | Zero High or Critical Code Analyzer findings; Prettier; gitleaks (pre-commit hook and CI)                                                                                                                               | `npm run analyze`, `npm run format:check` |
 
 183 Apex tests and 100% coverage. Coverage is a floor (90%) in CI, not the goal. Tests assert behaviour, including bulk (200-record) cases and negative paths. CI runs static checks on every PR. On ready PRs it also creates a fresh scratch org through JWT auth, deploys, runs every Apex test, gates on all passing and on coverage, and deletes the org. A merge to `main` does the same, unless its tree is identical to a PR head that already passed, in which case it reuses that result (ADR 0008).
 
