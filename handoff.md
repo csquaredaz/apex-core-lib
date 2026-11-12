@@ -1,20 +1,34 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1 **complete** (3 sessions, 11 PRs)
+Last updated: 2026-11-12 · Phase: roadmap step 1 **complete**; 1.1.0 released for repo B (4 sessions, 15 PRs)
 
 ## Status
 
-Repo A is **done and public**. `main` is green, coverage is 100%, and every definition-of-done item passes: CI green, 0 High Code Analyzer findings, no `TODO`s, ApexDoc on every public class, README in 7 sections, ADRs 0001–0008, `docs/case-study.md`, and a full-history gitleaks scan with no leaks.
+Repo A is **done and public**. `main` is green, coverage is 100%, and every definition-of-done item passes: CI green, 0 High Code Analyzer findings, no `TODO`s, ApexDoc on every public class, README in 7 sections, ADRs 0001–0009, `docs/case-study.md`, and a full-history gitleaks scan with no leaks.
 
-**Released:** package version `1.0.0-1`, built from tag `v1.0.0` and promoted, with Id `04tak000000u0zpAAA`. The GitHub release `v1.0.0` is marked latest. Package coverage is 99%.
+**Released:**
+
+| Version   | Id                   | Tag      | Adds                                                               | Coverage |
+| --------- | -------------------- | -------- | ------------------------------------------------------------------ | -------- |
+| `1.1.0-1` | `04tak000000u3MbAAI` | `v1.1.0` | `IDml.dmlUpsert`, `IUnitOfWork.registerUpsert` (ADR 0009) — latest | 99%      |
+| `1.0.0-1` | `04tak000000u0zpAAA` | `v1.0.0` | First release                                                      | 99%      |
 
 ## For consumers (repos B, C and F)
 
-- Install: `sf package install --package 04tak000000u0zpAAA --target-org <alias> --wait 20 --no-prompt`.
-- Declare the dependency: `"dependencies": [{ "package": "apex-core-lib@1.0.0-1" }]` in `sfdx-project.json`, with `packageAliases` mapping `apex-core-lib@1.0.0-1` to the `04t` Id. CI installs it before the deploy. The scaffold's `org-setup.sh` already installs dependencies.
+- Install: `sf package install --package 04tak000000u3MbAAI --target-org <alias> --wait 20 --no-prompt` (1.1.0-1).
+- Declare the dependency: `"dependencies": [{ "package": "apex-core-lib@1.1.0-1" }]` in `sfdx-project.json`, with `packageAliases` mapping `apex-core-lib@1.1.0-1` to the `04t` Id. CI installs it before the deploy. The scaffold's `org-setup.sh` already installs dependencies.
 - B implements A's ports: `ILogger` (`debug`, `info`, `warn`, `error(String, Exception)`, `flush`) and `IAlertSink` (`send(List<Alert>)`). B binds its adapters with `DI_Binding__mdt` rows (Kind `Service`, ADR 0004), so A doesn't change.
 - **R1 is resolved:** consumer tests can use the test kit (`Mocks`, `FakeId`, `RecordingLogger`) and `Application.Service.setMock` straight from the installed no-namespace package.
 - A change to A's public API means a new A version: a minor version for additions, a major version for breaking changes. Tag `vX.Y.Z` after bumping `versionNumber`. `release.yml` builds a beta, and Chad promotes it through `workflow_dispatch` with `confirm=PROMOTE`.
+
+## Session 4 (2026-11-12): 1.1.0, upsert for repo B
+
+- Probe in `acl-dev`: generic `List<SObject>` upsert keyed on the standard `idLookup` field `Order.OrderReferenceNumber` works in user mode, so tests need no external-Id metadata in the package. `stripInaccessible(UPSERTABLE)` keeps Ids. The platform rejects a non-`idLookup` key (`SObjectException`) and a key from another type (`TypeException`). `Account.Id` is a valid key.
+- PR 14 `feat/dml-upsert`: `IDml.dmlUpsert` in all three strategies and `IUnitOfWork.registerUpsert`. Per type, inserts then upserts, so a child can look up an upserted parent; one key per type per Unit of Work; rollback clears only the Ids the commit assigned. ADR 0009, an ADR 0005 amendment, `CHANGELOG.md`, and `release.yml` adding the version's changelog section to the release notes (a tag without one fails before the build). 195 tests, 100% coverage. The `main` run took the reuse path.
+- Tagged `v1.1.0` (Chad approved); beta `1.1.0-1` = `04tak000000u3MbAAI`, 99% coverage. Chad promoted it; the release is latest with the changelog notes.
+- Code Analyzer caught `EagerlyLoadedDescribeSObjectResult` (High) on the new key check; fixed with `SObjectDescribeOptions.DEFERRED`.
+- Not proven: that a hand-written `IDml` / `IUnitOfWork` breaks the upgrade install until it adds the method (no consumer has one). The CHANGELOG says to add the method before upgrading.
+- The beta wasn't installed into `apl-dev`, because an org with a beta can't upgrade to the promoted version. B installs `1.1.0-1` in its own thread.
 
 ## Session 3 (2026-11-12)
 
@@ -27,43 +41,39 @@ Repo A is **done and public**. `main` is green, coverage is 100%, and every defi
 - With Chad's approval, every workflow run older than `main` run 43298802736 was deleted, because the older logs showed the Dev Hub org Id. The repo was then made public. Both badges render.
 - All merged branches were deleted, leaving only `main` and `badges`. The probe org was deleted. Workspace `CLAUDE.md` and `roadmap.md` mark A done and B next.
 
-## Next: back-port to E before repo B
+## Next
 
-Update the `sf-repo-scaffold` CI template in `claude-code-salesforce-skills`, so that B starts from the fixed template:
-
-1. The ADR 0008 `reuse` job, plus `!cancelled()` conditions on the jobs that follow it.
-2. The test-result filename fix: `test-result-<runId>.json`, with the run Id read from `test-run-id.txt`.
-3. Skip `RunLocalTests` when no test class exists yet.
-4. The `badges` job (ADR 0003).
-5. A custom PMD ruleset that accepts `method_condition_result` test names.
-6. Org-detail redaction: `redact-org-details.sh` with `pipefail`, JSON test output sent to `/dev/null`, the summary scrub, and no JUnit file. Tighten the username regex to require an alphabetic TLD, because today it also masks npm `pkg@1.2.3` strings.
-7. `release.yml`, including the promote job's release-notes rewrite, for repos that publish a package.
+1. **Repo B, PR #4 `feat/persistence`** (its own thread): bump B's dependency to `apex-core-lib@1.1.0-1` (`04tak000000u3MbAAI`), upgrade A in `apl-dev`, and commit through `registerUpsert(rows, Log__c.Log_Key__c)` with `SystemDml`.
+2. **Back-port to E** (final pass, step 6): `scripts/changelog-section.sh`, `CHANGELOG.md` and the changelog step in `release.yml`, for repos that publish a package. The earlier 7-item CI back-port is done (E PR #8).
+3. A changes again only with a new version: additions are minor versions (ADR 0009) until A has outside consumers.
 
 ## Decisions made
 
-| Decision                   | Choice                                                                                                                 | Rejected                                                        | Record   |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | -------- |
-| FFLIB core                 | Lean in-repo core with FFLIB-compatible names, plus a small Stub API helper (`Mocks`)                                  | Vendored `fflib-apex-common` / `fflib-apex-mocks`, and a hybrid | ADR 0002 |
-| Coverage badge             | shields.io endpoint badge from `coverage.json` on an orphan `badges` branch (main only)                                | Codecov (SaaS, breaks free-only), job summary only              | ADR 0003 |
-| CI sharing                 | Per-repo copy from the scaffold                                                                                        | Reusable workflow in a central repo                             | roadmap  |
-| Domain objects             | The package ships none. Core tests use `Account` / `Order`. `Shipment__c` lives in the unpackaged `example/` directory | Custom objects in the package                                   | ADR 0002 |
-| Inbound-adapter port for C | Deferred to C. Adding an interface later is a minor version bump                                                       | Designing it now, before C exists                               | handoff  |
-| DI resolution              | Service Locator over a registry with `DI_Binding__mdt` overrides                                                       | Code-only registry per consumer, constructor injection only     | ADR 0004 |
-| `ILogger.error` signature  | Keep `error(String, Exception)` and ship `RecordingLogger` as the test double                                          | `Object cause`, an `ErrorDetail` value type                     | ADR 0002 |
-| Selector and domain lookup | By SObject type via `DI_Binding__mdt.Kind__c` (FFLIB-style `Application.Selector`)                                     | Selectors via the service factory; one metadata type per kind   | ADR 0004 |
-| ENFORCE vs STRIP           | `UserModeDml` (default, throws) and a separate `StripInaccessibleDml` decorator, instead of one class with a mode flag | `SecureDml` with an ENFORCE/STRIP mode                          | ADR 0005 |
-| Domain construction        | A per-domain `IDomainConstructor` class; records are `final`                                                           | No-argument constructor plus `initialise(records)`              | ADR 0006 |
-| Trigger kill switch        | `Trigger_Setting__mdt`; no row means active; any inactive row wins                                                     | Hierarchy custom setting                                        | ADR 0006 |
-| Re-entry guard             | Depth 2 per type by default, `setMaxDepth` in code, a skip logs a warning                                              | `Max_Depth__c` on the setting; run-once flag                    | ADR 0006 |
-| Retry boundary             | Up to 2 immediate retries in the client; async backoff belongs to the caller (C)                                       | Async re-enqueue in the client; no retry                        | ADR 0007 |
-| Retries run out            | Throw `CalloutClientException` with attempts and last response                                                         | Return the last response                                        | ADR 0007 |
-| 429 handling               | Not retried synchronously; `getRetryAfterSeconds()` for the caller                                                     | Retry like a 5xx (original plan)                                | ADR 0007 |
-| Example booking flow       | After-insert → service enqueues `CarrierBookingJob` (Queueable) → gateway → UoW                                        | Synchronous invocable (a trigger can't call out anyway)         | handoff  |
-| Example credentials        | External Credential (Custom protocol, no secret) + Named Credential (SecuredEndpoint)                                  | Legacy Named Credential (deprecated model)                      | handoff  |
-| Docs vs example            | Separate PRs: example app (PR 6), README + case study (PR 7), release (PR 8)                                           | One PR as planned                                               | handoff  |
-| `main` CI scratch org      | Reuse the PR's green result when the merge tree is identical; otherwise a fresh org                                    | Pace PRs to the budget; scheduled `main` runs                   | ADR 0008 |
-| CI log hygiene             | Mask org details with a redact filter, scrub the result JSON, drop JUnit                                               | `--json > /dev/null` everywhere (loses failure diagnostics)     | PR 11    |
-| Old CI runs before public  | Delete every run older than the first clean `main` run                                                                 | Leave them (Dev Hub org Id stays visible)                       | handoff  |
+| Decision                   | Choice                                                                                                                        | Rejected                                                                         | Record   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------- |
+| FFLIB core                 | Lean in-repo core with FFLIB-compatible names, plus a small Stub API helper (`Mocks`)                                         | Vendored `fflib-apex-common` / `fflib-apex-mocks`, and a hybrid                  | ADR 0002 |
+| Coverage badge             | shields.io endpoint badge from `coverage.json` on an orphan `badges` branch (main only)                                       | Codecov (SaaS, breaks free-only), job summary only                               | ADR 0003 |
+| CI sharing                 | Per-repo copy from the scaffold                                                                                               | Reusable workflow in a central repo                                              | roadmap  |
+| Domain objects             | The package ships none. Core tests use `Account` / `Order`. `Shipment__c` lives in the unpackaged `example/` directory        | Custom objects in the package                                                    | ADR 0002 |
+| Inbound-adapter port for C | Deferred to C. Adding an interface later is a minor version bump                                                              | Designing it now, before C exists                                                | handoff  |
+| DI resolution              | Service Locator over a registry with `DI_Binding__mdt` overrides                                                              | Code-only registry per consumer, constructor injection only                      | ADR 0004 |
+| `ILogger.error` signature  | Keep `error(String, Exception)` and ship `RecordingLogger` as the test double                                                 | `Object cause`, an `ErrorDetail` value type                                      | ADR 0002 |
+| Selector and domain lookup | By SObject type via `DI_Binding__mdt.Kind__c` (FFLIB-style `Application.Selector`)                                            | Selectors via the service factory; one metadata type per kind                    | ADR 0004 |
+| ENFORCE vs STRIP           | `UserModeDml` (default, throws) and a separate `StripInaccessibleDml` decorator, instead of one class with a mode flag        | `SecureDml` with an ENFORCE/STRIP mode                                           | ADR 0005 |
+| Domain construction        | A per-domain `IDomainConstructor` class; records are `final`                                                                  | No-argument constructor plus `initialise(records)`                               | ADR 0006 |
+| Trigger kill switch        | `Trigger_Setting__mdt`; no row means active; any inactive row wins                                                            | Hierarchy custom setting                                                         | ADR 0006 |
+| Re-entry guard             | Depth 2 per type by default, `setMaxDepth` in code, a skip logs a warning                                                     | `Max_Depth__c` on the setting; run-once flag                                     | ADR 0006 |
+| Retry boundary             | Up to 2 immediate retries in the client; async backoff belongs to the caller (C)                                              | Async re-enqueue in the client; no retry                                         | ADR 0007 |
+| Retries run out            | Throw `CalloutClientException` with attempts and last response                                                                | Return the last response                                                         | ADR 0007 |
+| 429 handling               | Not retried synchronously; `getRetryAfterSeconds()` for the caller                                                            | Retry like a 5xx (original plan)                                                 | ADR 0007 |
+| Example booking flow       | After-insert → service enqueues `CarrierBookingJob` (Queueable) → gateway → UoW                                               | Synchronous invocable (a trigger can't call out anyway)                          | handoff  |
+| Example credentials        | External Credential (Custom protocol, no secret) + Named Credential (SecuredEndpoint)                                         | Legacy Named Credential (deprecated model)                                       | handoff  |
+| Docs vs example            | Separate PRs: example app (PR 6), README + case study (PR 7), release (PR 8)                                                  | One PR as planned                                                                | handoff  |
+| Upsert API                 | `dmlUpsert` / `registerUpsert` on the existing interfaces, released as 1.1.0; per type inserts then upserts; one key per type | Extension interfaces; 2.0.0; a B-owned `ILogStore`; all inserts then all upserts | ADR 0009 |
+| Release notes              | `CHANGELOG.md` section added to the notes by `release.yml` in both jobs                                                       | Editing the notes by hand after promote (the promote job overwrites them)        | PR 14    |
+| `main` CI scratch org      | Reuse the PR's green result when the merge tree is identical; otherwise a fresh org                                           | Pace PRs to the budget; scheduled `main` runs                                    | ADR 0008 |
+| CI log hygiene             | Mask org details with a redact filter, scrub the result JSON, drop JUnit                                                      | `--json > /dev/null` everywhere (loses failure diagnostics)                      | PR 11    |
+| Old CI runs before public  | Delete every run older than the first clean `main` run                                                                        | Leave them (Dev Hub org Id stays visible)                                        | handoff  |
 
 ## Open risks
 
