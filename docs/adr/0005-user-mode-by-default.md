@@ -29,3 +29,7 @@ Option 1. Secure and loud by default; quiet or privileged only by an explicit, r
 - **`SystemDml`** is `without sharing` and must be justified in the caller's ApexDoc. Code review is the control.
 - **Deletes** aren't field-level, so `StripInaccessibleDml` passes them straight through. User mode still enforces delete permission.
 - **Rollback posture:** behaviour changes only through which `IDml` a caller passes, so reverting a caller to the default is a one-line change.
+
+## Amendment (2026-11-12, 1.1.0): upsert
+
+Upsert follows the same rules ([ADR 0009](0009-upsert-in-a-minor-version.md)). `UserModeDml.dmlUpsert` runs in `USER_MODE`, so the user needs create and edit access. `SystemDml.dmlUpsert` runs in `SYSTEM_MODE`. `StripInaccessibleDml.dmlUpsert` strips with `AccessType.UPSERTABLE`, logs each removal and copies the Ids of created and matched records back. If the match key itself is stripped, the upsert fails rather than silently inserting duplicates.
