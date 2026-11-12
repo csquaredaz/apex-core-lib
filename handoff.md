@@ -4,16 +4,16 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 
 ## Done
 
+- GitHub repo `csquaredaz/apex-core-lib` created (private) and `main` pushed. CI secrets set by Chad, and JWT auth proven in CI.
+- Unlocked package `apex-core-lib` created on the Dev Hub (`0Ho` alias in `sfdx-project.json`).
 - Repository scaffolded from `apex-standards:sf-repo-scaffold`. API 68.0 confirmed against the Dev Hub.
 - ADR 0001 (unlocked package, no namespace) moved here from the workspace.
 - Plan approved: file tree, class list, test plan and a 7-PR delivery sequence.
 
 ## Next
 
-1. Ask Chad before creating the GitHub repo (private first), then run `gh secret set` (Chad does this, with the key in `dev-hub-cert/`).
-2. Ask Chad before `sf package create` on the Dev Hub.
-3. PR 1 `chore`: ADRs 0002 (lean FFLIB core) and 0003 (coverage badge), the `badges`-branch CI job, and `orderSettings.enableOrders` in the scratch definition.
-4. PR 2 `feat(di)`: factories, `BindingRegistry`, `DI_Binding__mdt`, ports with default adapters, and `Mocks` / `FakeId`. Verify risk R1 here.
+1. Land PR 1 `chore`: ADRs 0002 (lean FFLIB core) and 0003 (coverage badge), the `badges`-branch CI job, and `orderSettings.enableOrders` in the scratch definition.
+2. PR 2 `feat(di)`: factories, `BindingRegistry`, `DI_Binding__mdt`, ports with default adapters, and `Mocks` / `FakeId`. Verify risk R1 here.
 
 ## Decisions made
 
@@ -32,6 +32,8 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 
 ## Notes for the next session
 
+- The old name `csquaredaz/apex-core-lib` redirected to the renamed `legacy-apex-core-lib`. Creating the new repo ended that redirect. Always check a repo name with `gh repo view` before pushing.
+- An empty `force-app/` deploys cleanly (no `--source-dir`, so the CLI returns empty). Still unverified: whether `RunLocalTests` with zero tests passes. PR 1 is the first run that tests it.
 - Package promotion stays a manual `workflow_dispatch` because promotion is irreversible.
 - Iterate as draft PRs (static checks only) and mark each one ready once, so it costs about one scratch org per PR.
 - Back-port the `badges`-branch job to E's scaffold template once it's proven here.
