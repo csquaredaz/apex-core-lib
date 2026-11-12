@@ -55,13 +55,13 @@ npm run org:test
 
 ### Install the package in your own org
 
-Each `v*` tag builds an unlocked package version (no namespace, ADR 0001) and attaches its install command to the [GitHub release](../../releases). The current released version is `1.0.0-1`:
+Each `v*` tag builds an unlocked package version (no namespace, ADR 0001) and attaches its install command to the [GitHub release](../../releases). The current released version is `1.1.0-1`:
 
 ```bash
-sf package install --package 04tak000000u0zpAAA --target-org <alias> --wait 20 --no-prompt
+sf package install --package 04tak000000u3MbAAI --target-org <alias> --wait 20 --no-prompt
 ```
 
-It installs in any org, including production. Versions not yet promoted install only in scratch orgs and sandboxes. In a consumer project, declare the dependency in `sfdx-project.json` as `"dependencies": [{ "package": "apex-core-lib@1.0.0-1" }]`, with that alias mapped to the `04t` Id. The test kit (`Mocks`, `FakeId`, `RecordingLogger`) is usable from consumer tests once the package is installed.
+It installs in any org, including production. Versions not yet promoted install only in scratch orgs and sandboxes. In a consumer project, declare the dependency in `sfdx-project.json` as `"dependencies": [{ "package": "apex-core-lib@1.1.0-1" }]`, with that alias mapped to the `04t` Id. The test kit (`Mocks`, `FakeId`, `RecordingLogger`) is usable from consumer tests once the package is installed.
 
 **Upgrading to 1.1.0:** 1.1.0 adds `dmlUpsert` to `IDml` and `registerUpsert` to `IUnitOfWork` ([CHANGELOG](CHANGELOG.md), ADR 0009). If you implement either interface by hand, add the method to your class before you upgrade. Stub API mocks are unaffected.
 
