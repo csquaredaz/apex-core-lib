@@ -18,6 +18,7 @@
   "sfdcLoginUrl": "https://login.salesforce.com",
   "sourceApiVersion": "68.0",
   "packageAliases": {
-    "apex-core-lib": "0Hoak0000007Rl3CAE"
+    "apex-core-lib": "0Hoak0000007Rl3CAE",
+    "apex-core-lib@1.0.0-1": "04tak000000u0zpAAA"
   }
 }

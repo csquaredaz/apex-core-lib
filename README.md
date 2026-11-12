@@ -53,6 +53,16 @@ npm run org:test
 
 `org:setup` creates a scratch org, deploys the library and the [`example/`](example) shipments app, and assigns their permission sets. It needs the Salesforce CLI and a Dev Hub set as the default (`sf config set target-dev-hub=<alias>`).
 
+### Install the package in your own org
+
+Each `v*` tag builds an unlocked package version (no namespace, ADR 0001) and attaches its install command to the [GitHub release](../../releases). The current version is `1.0.0-1` (beta):
+
+```bash
+sf package install --package 04tak000000u0zpAAA --target-org <alias> --wait 20 --no-prompt
+```
+
+Beta versions install only in scratch orgs and sandboxes. In a consumer project, declare the dependency in `sfdx-project.json` as `"dependencies": [{ "package": "apex-core-lib@1.0.0-1" }]`, with that alias mapped to the `04t` Id. The test kit (`Mocks`, `FakeId`, `RecordingLogger`) is usable from consumer tests once the package is installed.
+
 ## Usage
 
 The [`example/`](example) directory is a complete, unpackaged app: shipments for orders, booked with a fictional carrier. Bind its classes with metadata rows rather than code:
