@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 1
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 2
 
 ## Done
 
@@ -14,32 +14,25 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 1
 - PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
 - Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Resume here (PR 4)
+## Resume here (PR 4 open)
 
-Work on branch `feat/domain-triggers` (already created off `main` at `a24afcf`, holding only this handoff update). Same routine as PRs 2–3: iterate in the `acl-dev` scratch org, open a draft PR (static checks only), then mark it ready once so it uses one CI scratch org.
+PR 4 `feat(triggers)` is built on branch `feat/domain-triggers` and verified in `acl-dev`: 134 tests pass, 100% org-wide coverage, Code Analyzer 0 High. Next step: wait for CI on the PR, then Chad merges.
 
-**PR 4 `feat(triggers)`, from the approved plan:**
+What shipped, against the brief:
 
-| Class                                  | Responsibility                                                                                                                                                 | Pattern                                      |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `IDomain`, `Domain`                    | Holds `Records`; hooks `onApplyDefaults`, `onValidate`, `onBefore*` / `onAfter*`; no SOQL or DML                                                               | Table Module (FFLIB Domain), Template Method |
-| `DomainFactory` + `Application.Domain` | `newInstance(List<SObject>)` or `newInstance(SObjectType)`; `Kind__c = Domain` rows key on the SObject API name; `setMock`                                     | Abstract Factory                             |
-| `TriggerDispatcher`                    | `run()`: resolve the domain via `DomainFactory`, honour the `Trigger_Setting__mdt` kill switch and `bypass(SObjectType)` / `clearBypass`, re-entry depth guard | Dispatcher                                   |
-| `TriggerContext`                       | Wraps `Trigger.*` so dispatcher logic is unit-testable without DML                                                                                             | Adapter                                      |
-| `Trigger_Setting__mdt`                 | `SObject_Type__c`, `Is_Active__c` (kill switch; no row means active)                                                                                           |                                              |
+| Class                                            | Notes                                                                                                                                                                                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `IDomain`, `SObjectDomain`, `IDomainConstructor` | Renamed from `Domain`: it shadows `System.Domain` (PMD `TypeShadowsBuiltInNamespace`, High). Records arrive through a per-domain `IDomainConstructor` class, chosen by Chad (FFLIB `IConstructable`).              |
+| `DomainFactory` + `Application.Domain`           | `newInstance(records)`, `newInstance(type)` (empty typed list), `newInstance(records, type)`, `setMock`. Checks that the built domain owns the requested type, and rejects a constructor that returns null.        |
+| `TriggerDispatcher`                              | Order: kill switch, bypass, depth guard, then domain resolution. Depth is 2 by default, `setMaxDepth(type, n)` changes it (chosen by Chad), and a skipped run logs `ILogger.warn`. Depth is released in `finally`. |
+| `TriggerContext`                                 | Adapter with a public constructor for fake contexts. `current()` throws outside a trigger. Its return line (1 line, 97%) is covered by the `example/` trigger in PR 6.                                             |
+| `Trigger_Setting__mdt`                           | `SObject_Type__c` (text) and `Is_Active__c` (subscriber-controlled). Any inactive row for a type wins.                                                                                                             |
 
-Design points to settle while building:
+ADR 0006 records the construction, kill-switch and depth-guard decisions. The callout ADR is now 0007.
 
-- `Type.newInstance()` needs a public no-argument constructor, so a domain can't take records in its constructor. Use a no-argument constructor plus an initialisation method (for example `withRecords(List<SObject>)`), or a domain constructor interface that `DomainFactory` calls. Present the options to Chad if the trade-off isn't obvious.
-- Mirror `SelectorFactory`: check that the bound domain handles the requested SObject type.
-- `Trigger_Setting__mdt` can't be inserted in tests; inject rows through a `@TestVisible` constructor, as `BindingRegistry` does.
-- No triggers ship in the package. Core tests drive the dispatcher through a fake `TriggerContext`; a real trigger goes in `example/` (PR 6).
+## Next (after PR 4 merges)
 
-**Test plan:** a 200-record fake context calls each hook once; the kill switch off means no hooks; `bypass` is honoured and cleared; re-entry beyond the depth guard is skipped; a missing domain binding throws `ApplicationException`; a domain for the wrong type throws.
-
-## Next (after PR 4)
-
-1. PR 5 `feat(callout)`: `ICalloutClient`, `CalloutClient` (Named Credential only, timeout, correlation-id header, at most 2 synchronous retries on 408/429/5xx/`CalloutException` for idempotent verbs or when `Idempotency-Key` is set), `CalloutRequest` (Builder), `CalloutResponse`, `RetryPolicy`, `CalloutException`. ADR 0006 (sync retry only; real backoff is async and belongs to C).
+1. PR 5 `feat(callout)`: `ICalloutClient`, `CalloutClient` (Named Credential only, timeout, correlation-id header, at most 2 synchronous retries on 408/429/5xx/`CalloutException` for idempotent verbs or when `Idempotency-Key` is set), `CalloutRequest` (Builder), `CalloutResponse`, `RetryPolicy`, `CalloutException`. ADR 0007 (sync retry only; real backoff is async and belongs to C).
 2. PR 6 `feat(example)` + docs: unpackaged `example/` directory (`Shipment__c`, `ShipmentTrigger`, selector, domain, service, `CarrierGateway`, `TestDataFactory`, `Shipment_Manager` permission set, binding records, `Carrier` Named Credential with no secrets), real-DML integration tests, README in the seven-section order, `docs/case-study.md`.
 3. PR 7 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there.
 
@@ -56,6 +49,9 @@ Design points to settle while building:
 | `ILogger.error` signature  | Keep `error(String, Exception)` and ship `RecordingLogger` as the test double                                          | `Object cause`, an `ErrorDetail` value type                     | ADR 0002 |
 | Selector and domain lookup | By SObject type via `DI_Binding__mdt.Kind__c` (FFLIB-style `Application.Selector`)                                     | Selectors via the service factory; one metadata type per kind   | ADR 0004 |
 | ENFORCE vs STRIP           | `UserModeDml` (default, throws) and a separate `StripInaccessibleDml` decorator, instead of one class with a mode flag | `SecureDml` with an ENFORCE/STRIP mode                          | ADR 0005 |
+| Domain construction        | A per-domain `IDomainConstructor` class; records are `final`                                                           | No-argument constructor plus `initialise(records)`              | ADR 0006 |
+| Trigger kill switch        | `Trigger_Setting__mdt`; no row means active; any inactive row wins                                                     | Hierarchy custom setting                                        | ADR 0006 |
+| Re-entry guard             | Depth 2 per type by default, `setMaxDepth` in code, a skip logs a warning                                              | `Max_Depth__c` on the setting; run-once flag                    | ADR 0006 |
 
 ## Open risks
 
@@ -63,10 +59,13 @@ Design points to settle while building:
 
 ## Plan deviations
 
+- The base domain class is `SObjectDomain`, not `Domain` as planned, to avoid shadowing `System.Domain`.
 - Each factory lands with its layer (`SelectorFactory` and `UnitOfWorkFactory` in PR 3, `DomainFactory` in PR 4) rather than all of them in PR 2, because each needs the interface it returns.
 - `SecureDml` with two modes became `UserModeDml` plus the `StripInaccessibleDml` decorator, so the decorator wraps one thing.
 
 ## Notes for the next session
+
+- More Apex traps found in PR 4: `bulk` is a reserved word (a constant named `BULK` fails to parse), Apex allows only one level of inner classes, and inner classes can't declare static members.
 
 - Apex reserves `inner`, and constants clash with SObject names case-insensitively (`ORDER` vs `Order`). Apex has no `IllegalStateException`. Minimum Access test users plus a test-created permission set work in a Developer Edition scratch org (no license limit hit).
 - Code Analyzer on PR 3: 0 High. `UnitOfWork` has a class-total complexity warning (Moderate) from guarding every registration mistake; the method-level findings were refactored away.
