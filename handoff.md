@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–7)
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–8)
 
 ## Done
 
@@ -14,16 +14,31 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–7)
 - PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
 - Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Resume here (PR 7 open)
+## Resume here (PR 8 draft, blocked on the scratch-org budget)
 
-PR 6 merged (`26592ca`), the `main` run is green, and the badge job now publishes **100%** coverage. PR 6's details are in the README "Usage" and "Testing" sections.
+PR 7 merged (`041f99e`). Its `main` scratch-org job **failed only because the Dev Hub hit its daily scratch-org signup limit** (`LIMIT_EXCEEDED`, 0/6 left on 2026-11-12 after seven PR runs). The code is identical to the PR 7 head, which passed. The badge job was skipped, so the badge stays at 100%.
 
-PR 7 `docs` is on branch `docs/readme-case-study`: the README in the seven-section order, and `docs/case-study.md`. The case study is self-contained for the portfolio site, with no relative links and no employer metrics. Next step: Chad reviews the prose and the Mermaid diagram in the PR's rendered view, CI passes, and Chad merges.
+PR 8 `ci(release)` is on branch `ci/release`, as a **draft** (static checks only, no org):
 
-## Next (after PR 7 merges)
+- `.github/workflows/release.yml`:
+  - **build** (on tag `v*`): checks that the tag equals `versionNumber` major.minor.patch, runs `sf package version create --code-coverage --installation-key-bypass`, gates on `HasPassedCodeCoverageCheck`, and publishes a GitHub pre-release with the `04t` install command.
+  - **promote** (`workflow_dispatch`): takes `version_id`, `tag` and `confirm=PROMOTE`, runs `sf package version promote`, then marks the release as latest. It is manual because promotion is irreversible.
+- `sfdx-project.json`: `1.0.0.NEXT` / `ver 1.0`, plus `definitionFile` so the build org has Orders enabled (core tests use `Order`).
+- Verified locally: CLI flags and report JSON fields (read from the `@salesforce/packaging` source), the tag-match and `04t` checks, and that the YAML parses. Not verified: an actual version build (no version created yet; 6/6 package creates left).
 
-1. PR 8 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there. Add an "Install" line to the README quick start once a version exists (left out on purpose until there is one).
-2. Then repo A's definition of done: CI green, README complete, ADRs written, Code Analyzer clean, no `TODO`s, case study written. Update the workspace `CLAUDE.md` status table and `roadmap.md` (Chad's call), and ask Chad before making the repo public.
+**When the budget frees up (rolling 24 h; check with `sf org list limits --target-org devhub`), about 4 orgs are needed:**
+
+1. Re-run the failed `main` job: `gh run rerun 43262725125 --failed`.
+2. Mark PR 8 ready (1 org), then Chad merges, then check the `main` run (1 org).
+3. **Ask Chad before tagging** `v1.0.0`: it creates a package version and a public-facing GitHub release.
+4. R1 probe (1 org): a fresh scratch org, install the beta `04t`, deploy a probe test class that uses `Mocks`, `FakeId` and `RecordingLogger`, and run it. If it fails, fall back to plain `public` classes (see R1).
+5. Add the install line to the README quick start. Chad promotes through the workflow when ready.
+
+**Open decision (budget):** each PR currently costs about 2 scratch orgs (one when marked ready, one on `main`), so a Developer Edition Dev Hub supports about 3 PRs a day. Options: (a) accept it and pace the PRs (the current approach); (b) skip the `main` scratch-org run when the merge commit's tree matches a PR head that already passed; (c) run the `main` job on a schedule instead. Ask Chad before B, C or F, which have the same budget.
+
+## Next (after v1.0.0)
+
+Repo A's definition of done: CI green, README complete, ADRs written, Code Analyzer clean, no `TODO`s, case study written. Update the workspace `CLAUDE.md` status table and `roadmap.md` (Chad's call), and ask Chad before making the repo public.
 
 ## Decisions made
 
