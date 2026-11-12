@@ -31,6 +31,11 @@ public with sharing class Application {
   );
 
   /**
+   * @description Domains, resolved by SObject type. The library ships no domain bindings.
+   */
+  public static final DomainFactory Domain = new DomainFactory(new BindingRegistry(BindingRegistry.Kind.DOMAIN, null));
+
+  /**
    * @description Units of Work; each caller supplies its commit order.
    */
   public static final UnitOfWorkFactory UnitOfWork = new UnitOfWorkFactory();
