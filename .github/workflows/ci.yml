@@ -155,16 +155,21 @@ jobs:
           SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SF_DEVHUB_USERNAME: ${{ secrets.SF_DEVHUB_USERNAME }}
         run: |
+          set -o pipefail
           printf '%s\n' "$SF_JWT_KEY" > "$RUNNER_TEMP/server.key"
+          # The login prints the Dev Hub org Id; the redact filter masks it in the public log.
           sf org login jwt \
             --client-id "$SF_CONSUMER_KEY" \
             --jwt-key-file "$RUNNER_TEMP/server.key" \
             --username "$SF_DEVHUB_USERNAME" \
             --alias devhub \
-            --set-default-dev-hub
+            --set-default-dev-hub 2>&1 | bash scripts/redact-org-details.sh
 
       - name: Create scratch org, install dependencies, deploy
-        run: bash scripts/org-setup.sh ci-org
+        # Signup, install and permission-set output name the scratch org; mask it in the log.
+        run: |
+          set -o pipefail
+          bash scripts/org-setup.sh ci-org 2>&1 | bash scripts/redact-org-details.sh
         env:
           SF_SCRATCH_DURATION: "1"
           # The Dev Hub authenticates through an External Client App, which scratch-org signup
@@ -229,7 +234,7 @@ jobs:
       - name: Delete scratch org and key
         if: always()
         run: |
-          sf org delete scratch --target-org ci-org --no-prompt || true
+          sf org delete scratch --target-org ci-org --no-prompt 2>&1 | bash scripts/redact-org-details.sh || true
           rm -f "$RUNNER_TEMP/server.key"
 
   # Live coverage badge without a SaaS account (ADR 0003). Runs only for a green push to main and

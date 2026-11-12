@@ -75,13 +75,15 @@ jobs:
           SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SF_DEVHUB_USERNAME: ${{ secrets.SF_DEVHUB_USERNAME }}
         run: |
+          set -o pipefail
           printf '%s\n' "$SF_JWT_KEY" > "$RUNNER_TEMP/server.key"
+          # The login prints the Dev Hub org Id; the redact filter masks it in the public log.
           sf org login jwt \
             --client-id "$SF_CONSUMER_KEY" \
             --jwt-key-file "$RUNNER_TEMP/server.key" \
             --username "$SF_DEVHUB_USERNAME" \
             --alias devhub \
-            --set-default-dev-hub
+            --set-default-dev-hub 2>&1 | bash scripts/redact-org-details.sh
 
       # --code-coverage runs the package's own tests in a build org shaped by the package
       # directory's definitionFile. Only force-app is packaged; example/ is never included.
@@ -94,7 +96,7 @@ jobs:
             --code-coverage \
             --installation-key-bypass \
             --wait 80 \
-            --json > version.json || { cat version.json; exit 1; }
+            --json > version.json || { bash scripts/redact-org-details.sh < version.json; exit 1; }
           version_id=$(node -p 'require("./version.json").result.SubscriberPackageVersionId')
           echo "version_id=$version_id" >> "$GITHUB_OUTPUT"
 
@@ -162,18 +164,22 @@ jobs:
           SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SF_DEVHUB_USERNAME: ${{ secrets.SF_DEVHUB_USERNAME }}
         run: |
+          set -o pipefail
           printf '%s\n' "$SF_JWT_KEY" > "$RUNNER_TEMP/server.key"
+          # The login prints the Dev Hub org Id; the redact filter masks it in the public log.
           sf org login jwt \
             --client-id "$SF_CONSUMER_KEY" \
             --jwt-key-file "$RUNNER_TEMP/server.key" \
             --username "$SF_DEVHUB_USERNAME" \
             --alias devhub \
-            --set-default-dev-hub
+            --set-default-dev-hub 2>&1 | bash scripts/redact-org-details.sh
 
       - name: Promote
         env:
           VERSION_ID: ${{ inputs.version_id }}
-        run: sf package version promote --package "$VERSION_ID" --no-prompt
+        run: |
+          set -o pipefail
+          sf package version promote --package "$VERSION_ID" --no-prompt 2>&1 | bash scripts/redact-org-details.sh
 
       - name: Mark the GitHub release as the latest release
         env:
