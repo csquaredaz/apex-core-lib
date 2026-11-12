@@ -128,22 +128,29 @@ jobs:
             exit 0
           fi
           mkdir -p tests/apex
+          # Keep going on test failures so the summary is still written; the gate below fails the job.
           sf apex run test \
             --target-org ci-org \
             --test-level RunLocalTests \
             --code-coverage \
             --result-format human \
             --output-dir tests/apex \
-            --wait 30
-          # Coverage goes to the job summary, an artifact and (on main) the badge job.
-          # No third-party service. The file may or may not carry a "result" wrapper, so accept both.
-          node -e '
+            --wait 30 || true
+          # Coverage goes to the job summary, an artifact and (on main) the badge job; no third-party
+          # service. The CLI writes test-result-<runId>.json, with the run Id in test-run-id.txt.
+          # Gate: every test passes and org-wide coverage is at least MIN_COVERAGE (CLAUDE.md floor).
+          MIN_COVERAGE=90 node -e '
             const fs = require("fs");
-            const j = require("./tests/apex/test-result.json");
-            const r = (j.result || j).summary;
+            const runId = fs.readFileSync("tests/apex/test-run-id.txt", "utf8").trim();
+            const j = JSON.parse(fs.readFileSync(`tests/apex/test-result-${runId}.json`, "utf8"));
+            const s = (j.result || j).summary;
+            const coverage = parseInt(s.orgWideCoverage, 10) || 0;
+            const min = Number(process.env.MIN_COVERAGE);
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-              `### Apex tests\n\n| Outcome | Tests | Org-wide coverage |\n|---|---|---|\n| ${r.outcome} | ${r.testsRan} | ${r.orgWideCoverage} |\n`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `coverage=${parseInt(r.orgWideCoverage, 10) || 0}\n`);
+              `### Apex tests\n\n| Outcome | Tests | Failing | Org-wide coverage | Floor |\n|---|---|---|---|---|\n| ${s.outcome} | ${s.testsRan} | ${s.failing} | ${coverage}% | ${min}% |\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `coverage=${coverage}\n`);
+            if (s.outcome !== "Passed") { console.error(`${s.failing} Apex test(s) failed.`); process.exit(1); }
+            if (coverage < min) { console.error(`Coverage ${coverage}% is below the ${min}% floor.`); process.exit(1); }
           '
 
       - name: Upload Apex test results
