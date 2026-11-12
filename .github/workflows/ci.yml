@@ -8,6 +8,8 @@ name: ci
 #   - the scratch-org job runs only after static checks pass, never on draft PRs,
 #   - concurrency cancels superseded runs before they create an org,
 #   - the org lives for one day and is deleted in an always() step.
+#   - a push to main reuses the PR's scratch-org result when the merge commit's tree is identical
+#     to a PR head that already passed (the reuse job), so a PR costs one org, not two.
 
 on:
   pull_request:
@@ -75,10 +77,65 @@ jobs:
             | tar -xz -C /usr/local/bin gitleaks
           gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1
 
+  # Saves a scratch org per merge. On a push to main, if HEAD is a merge commit whose tree is
+  # identical to its PR-head parent, and that PR head has a ci run whose scratch-org job passed,
+  # the identical code was already deployed and tested. Reuse that run's result and coverage
+  # instead of creating another org. Anything else (squash merge, a PR branch behind main, no green
+  # run, missing artifact) falls through to a fresh scratch-org run.
+  reuse:
+    name: reuse PR scratch-org result (main only)
+    needs: static
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      reuse: ${{ steps.check.outputs.reuse }}
+      coverage: ${{ steps.check.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: Find a green PR run for the identical tree
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr_head=$(git rev-parse --verify --quiet HEAD^2 || true)
+          if [ -z "$pr_head" ]; then
+            echo "HEAD is not a merge commit; running a fresh scratch org."; exit 0
+          fi
+          if [ "$(git rev-parse HEAD^{tree})" != "$(git rev-parse "$pr_head^{tree}")" ]; then
+            echo "The merge changed the tree (the PR branch was behind main); running a fresh scratch org."; exit 0
+          fi
+          for run_id in $(gh run list --workflow ci.yml --commit "$pr_head" --status success --json databaseId -q '.[].databaseId'); do
+            job=$(gh run view "$run_id" --json jobs -q '.jobs[] | select(.name == "scratch org (deploy + Apex tests)") | .conclusion')
+            [ "$job" = "success" ] || continue
+            mkdir -p tests/apex
+            gh run download "$run_id" --name apex-test-results --dir tests/apex || continue
+            coverage=$(node -e '
+              const fs = require("fs");
+              const runId = fs.readFileSync("tests/apex/test-run-id.txt", "utf8").trim();
+              const j = JSON.parse(fs.readFileSync(`tests/apex/test-result-${runId}.json`, "utf8"));
+              console.log(parseInt((j.result || j).summary.orgWideCoverage, 10) || 0);
+            ') || continue
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+            echo "coverage=$coverage" >> "$GITHUB_OUTPUT"
+            echo "### Apex tests"$'\n\n'"Reused run [$run_id](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/$run_id) for PR head \`${pr_head:0:7}\` (identical tree): ${coverage}% coverage. No scratch org created." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          done
+          echo "No green scratch-org run for $pr_head; running a fresh scratch org."
+
   scratch-org:
     name: scratch org (deploy + Apex tests)
-    needs: static
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: [static, reuse]
+    # !cancelled() lets this job run when reuse is skipped (every pull_request event) but not after a cancel.
+    if: >-
+      !cancelled() && needs.static.result == 'success'
+      && needs.reuse.outputs.reuse != 'true'
+      && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -172,11 +229,12 @@ jobs:
   # force-pushes. The README reads the file through a shields.io endpoint badge.
   coverage-badge:
     name: coverage badge (main only)
-    needs: scratch-org
+    needs: [scratch-org, reuse]
     # The coverage check skips the job before any Apex tests exist, rather than publishing 0%.
     if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
-      && needs.scratch-org.outputs.coverage != ''
+      !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && (needs.scratch-org.result == 'success' || needs.reuse.outputs.reuse == 'true')
+      && (needs.scratch-org.outputs.coverage != '' || needs.reuse.outputs.coverage != '')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -184,9 +242,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: Write coverage.json to the badges branch
         env:
-          COVERAGE: ${{ needs.scratch-org.outputs.coverage }}
+          COVERAGE: ${{ needs.scratch-org.outputs.coverage || needs.reuse.outputs.coverage }}
         run: |
-          : "${COVERAGE:?scratch-org job reported no coverage}"
+          : "${COVERAGE:?neither the scratch-org job nor the reuse job reported coverage}"
           if git ls-remote --exit-code --heads origin badges >/dev/null; then
             git fetch --depth 1 origin badges:badges
             git switch badges

@@ -4,9 +4,10 @@
       "path": "force-app",
       "default": true,
       "package": "apex-core-lib",
-      "versionName": "ver 0.1",
-      "versionNumber": "0.1.0.NEXT",
-      "versionDescription": "Apex platform foundation library (DI, FFLIB-style layers, triggers, secure DML, callouts)."
+      "versionName": "ver 1.0",
+      "versionNumber": "1.0.0.NEXT",
+      "versionDescription": "Apex platform foundation library (DI, FFLIB-style layers, triggers, secure DML, callouts).",
+      "definitionFile": "config/project-scratch-def.json"
     },
     {
       "path": "example"

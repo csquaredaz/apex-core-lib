@@ -119,6 +119,7 @@ To switch the shipment trigger off in production without a deploy, set `Trigger_
 | Data security         | User mode by default; `StripInaccessibleDml` and `SystemDml` are explicit opt-outs                        | System mode plus manual describe checks                       | [0005](docs/adr/0005-user-mode-by-default.md)           |
 | Triggers              | A domain constructor class per domain, a metadata kill switch, and a depth guard of 2 with logged skips   | `initialise(records)`; a run-once flag                        | [0006](docs/adr/0006-trigger-framework.md)              |
 | Callouts              | Up to 2 immediate retries on idempotent requests; throw when retries run out; no synchronous retry on 429 | Async backoff in the client; retrying 429                     | [0007](docs/adr/0007-callout-retry-policy.md)           |
+| CI budget             | A merge to `main` reuses the PR's scratch-org result when the tree is identical                           | A second scratch org per merge; scheduled `main` runs         | [0008](docs/adr/0008-reuse-pr-scratch-org-results.md)   |
 
 Deliberately omitted, each with its reason recorded where a reader would look for it:
 
@@ -134,7 +135,7 @@ Deliberately omitted, each with its reason recorded where a reader would look fo
 | Apex integration (real DML) | 200 shipments saved as a least-privilege user → trigger → domain → Queueable → carrier → commit, with 0 SOQL and at most 2 DML statements; a user without access is denied; a carrier outage leaves shipments `Pending` | `npm run org:test` |
 | Static analysis             | Zero High or Critical Code Analyzer findings; Prettier; gitleaks                                                                                                                                                        | `npm run analyze`  |
 
-183 Apex tests and 100% coverage. Coverage is a floor (90%) in CI, not the goal. Tests assert behaviour, including bulk (200-record) cases and negative paths. CI runs static checks on every PR. On ready PRs and on `main` it also creates a fresh scratch org through JWT auth, deploys, runs every Apex test, gates on all passing and on coverage, and deletes the org.
+183 Apex tests and 100% coverage. Coverage is a floor (90%) in CI, not the goal. Tests assert behaviour, including bulk (200-record) cases and negative paths. CI runs static checks on every PR. On ready PRs it also creates a fresh scratch org through JWT auth, deploys, runs every Apex test, gates on all passing and on coverage, and deletes the org. A merge to `main` does the same, unless its tree is identical to a PR head that already passed, in which case it reuses that result (ADR 0008).
 
 ## Built with Claude Code
 

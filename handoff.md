@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–7)
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–8)
 
 ## Done
 
@@ -14,16 +14,30 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–7)
 - PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
 - Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Resume here (PR 7 open)
+## Resume here (PR 8 draft, blocked on the scratch-org budget)
 
-PR 6 merged (`26592ca`), the `main` run is green, and the badge job now publishes **100%** coverage. PR 6's details are in the README "Usage" and "Testing" sections.
+PR 7 merged (`041f99e`). Its `main` scratch-org job **failed only because the Dev Hub hit its daily scratch-org signup limit** (`LIMIT_EXCEEDED`, 0/6 left on 2026-11-12 after seven PR runs). The code is identical to the PR 7 head, which passed. The badge job was skipped, so the badge stays at 100%.
 
-PR 7 `docs` is on branch `docs/readme-case-study`: the README in the seven-section order, and `docs/case-study.md`. The case study is self-contained for the portfolio site, with no relative links and no employer metrics. Next step: Chad reviews the prose and the Mermaid diagram in the PR's rendered view, CI passes, and Chad merges.
+PR 8 `ci(release)` is on branch `ci/release`, as a **draft** (static checks only, no org):
 
-## Next (after PR 7 merges)
+- `.github/workflows/release.yml`:
+  - **build** (on tag `v*`): checks that the tag equals `versionNumber` major.minor.patch, runs `sf package version create --code-coverage --installation-key-bypass`, gates on `HasPassedCodeCoverageCheck`, and publishes a GitHub pre-release with the `04t` install command.
+  - **promote** (`workflow_dispatch`): takes `version_id`, `tag` and `confirm=PROMOTE`, runs `sf package version promote`, then marks the release as latest. It is manual because promotion is irreversible.
+- `sfdx-project.json`: `1.0.0.NEXT` / `ver 1.0`, plus `definitionFile` so the build org has Orders enabled (core tests use `Order`).
+- Verified locally: CLI flags and report JSON fields (read from the `@salesforce/packaging` source), the tag-match and `04t` checks, and that the YAML parses. Not verified: an actual version build (no version created yet; 6/6 package creates left).
 
-1. PR 8 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there. Add an "Install" line to the README quick start once a version exists (left out on purpose until there is one).
-2. Then repo A's definition of done: CI green, README complete, ADRs written, Code Analyzer clean, no `TODO`s, case study written. Update the workspace `CLAUDE.md` status table and `roadmap.md` (Chad's call), and ask Chad before making the repo public.
+**CI budget fix (ADR 0008, Chad chose option b):** `ci.yml` has a new `reuse` job. On a push to `main` it reuses the PR's scratch-org result when the merge commit's tree equals the PR head's tree and that head has a green scratch-org run. Otherwise it creates a fresh org, as before. A dry run against the real merges `041f99e` and `26592ca` found the matching green runs and their 100% coverage, so both merges would have cost 0 orgs. The job conditions now use `!cancelled()`. Back-port the job to E's `sf-repo-scaffold` CI template.
+
+**When the budget frees up (rolling 24 h; check with `sf org list limits --target-org devhub`), about 2 orgs are needed:**
+
+1. Mark PR 8 ready (1 org). Chad merges. The `main` run should take the **reuse** path (0 orgs) and also proves the PR 7 tree, so re-running the failed job 43262725125 isn't needed.
+2. **Ask Chad before tagging** `v1.0.0`: it creates a package version and a public-facing GitHub release. The release workflow's package build uses a build org, not a scratch-org signup (to confirm on the first run).
+3. R1 probe (1 org): a fresh scratch org, install the beta `04t`, deploy a probe test class that uses `Mocks`, `FakeId` and `RecordingLogger`, and run it. If it fails, fall back to plain `public` classes (see R1).
+4. Add the install line to the README quick start. Chad promotes through the workflow when ready.
+
+## Next (after v1.0.0)
+
+Repo A's definition of done: CI green, README complete, ADRs written, Code Analyzer clean, no `TODO`s, case study written. Update the workspace `CLAUDE.md` status table and `roadmap.md` (Chad's call), and ask Chad before making the repo public.
 
 ## Decisions made
 
@@ -47,6 +61,7 @@ PR 7 `docs` is on branch `docs/readme-case-study`: the README in the seven-secti
 | Example booking flow       | After-insert → service enqueues `CarrierBookingJob` (Queueable) → gateway → UoW                                        | Synchronous invocable (a trigger can't call out anyway)         | handoff  |
 | Example credentials        | External Credential (Custom protocol, no secret) + Named Credential (SecuredEndpoint)                                  | Legacy Named Credential (deprecated model)                      | handoff  |
 | Docs vs example            | Separate PRs: example app (PR 6), README + case study (PR 7), release (PR 8)                                           | One PR as planned                                               | handoff  |
+| `main` CI scratch org      | Reuse the PR's green result when the merge tree is identical; otherwise a fresh org                                    | Pace PRs to the budget; scheduled `main` runs                   | ADR 0008 |
 
 ## Open risks
 
