@@ -11,12 +11,37 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 1
 - Plan approved: file tree, class list, test plan and a 7-PR delivery sequence.
 - PR 1 merged: ADRs 0002 and 0003, the coverage-badge job, Orders enabled, and CI that skips Apex tests until a test class exists.
 - PR 2 `feat(di)` merged: `Application.Service`, `ServiceFactory`, `BindingRegistry`, `DI_Binding__mdt`, the `ILogger` and `IAlertSink` ports with `DebugLogger` / `NoOpAlertSink`, the `Alert` value type, and the test kit `Mocks`, `FakeId`, `RecordingLogger`. ADR 0004. The CI test step reads the real result file and gates on all tests passing and at least 90% coverage. 36 tests, 100% coverage in the dev org.
-- PR 3 `feat(data)` (open): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage in the dev org, including restricted-user tests.
+- PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
+- Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Next
+## Resume here (PR 4)
 
-1. Land PR 3.
-2. PR 4 `feat(triggers)`: `DomainFactory`, `Domain`, `TriggerDispatcher`, `TriggerContext`, `Trigger_Setting__mdt`.
+Work on branch `feat/domain-triggers` (already created off `main` at `a24afcf`, holding only this handoff update). Same routine as PRs 2–3: iterate in the `acl-dev` scratch org, open a draft PR (static checks only), then mark it ready once so it uses one CI scratch org.
+
+**PR 4 `feat(triggers)`, from the approved plan:**
+
+| Class                                  | Responsibility                                                                                                                                                 | Pattern                                      |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `IDomain`, `Domain`                    | Holds `Records`; hooks `onApplyDefaults`, `onValidate`, `onBefore*` / `onAfter*`; no SOQL or DML                                                               | Table Module (FFLIB Domain), Template Method |
+| `DomainFactory` + `Application.Domain` | `newInstance(List<SObject>)` or `newInstance(SObjectType)`; `Kind__c = Domain` rows key on the SObject API name; `setMock`                                     | Abstract Factory                             |
+| `TriggerDispatcher`                    | `run()`: resolve the domain via `DomainFactory`, honour the `Trigger_Setting__mdt` kill switch and `bypass(SObjectType)` / `clearBypass`, re-entry depth guard | Dispatcher                                   |
+| `TriggerContext`                       | Wraps `Trigger.*` so dispatcher logic is unit-testable without DML                                                                                             | Adapter                                      |
+| `Trigger_Setting__mdt`                 | `SObject_Type__c`, `Is_Active__c` (kill switch; no row means active)                                                                                           |                                              |
+
+Design points to settle while building:
+
+- `Type.newInstance()` needs a public no-argument constructor, so a domain can't take records in its constructor. Use a no-argument constructor plus an initialisation method (for example `withRecords(List<SObject>)`), or a domain constructor interface that `DomainFactory` calls. Present the options to Chad if the trade-off isn't obvious.
+- Mirror `SelectorFactory`: check that the bound domain handles the requested SObject type.
+- `Trigger_Setting__mdt` can't be inserted in tests; inject rows through a `@TestVisible` constructor, as `BindingRegistry` does.
+- No triggers ship in the package. Core tests drive the dispatcher through a fake `TriggerContext`; a real trigger goes in `example/` (PR 6).
+
+**Test plan:** a 200-record fake context calls each hook once; the kill switch off means no hooks; `bypass` is honoured and cleared; re-entry beyond the depth guard is skipped; a missing domain binding throws `ApplicationException`; a domain for the wrong type throws.
+
+## Next (after PR 4)
+
+1. PR 5 `feat(callout)`: `ICalloutClient`, `CalloutClient` (Named Credential only, timeout, correlation-id header, at most 2 synchronous retries on 408/429/5xx/`CalloutException` for idempotent verbs or when `Idempotency-Key` is set), `CalloutRequest` (Builder), `CalloutResponse`, `RetryPolicy`, `CalloutException`. ADR 0006 (sync retry only; real backoff is async and belongs to C).
+2. PR 6 `feat(example)` + docs: unpackaged `example/` directory (`Shipment__c`, `ShipmentTrigger`, selector, domain, service, `CarrierGateway`, `TestDataFactory`, `Shipment_Manager` permission set, binding records, `Carrier` Named Credential with no secrets), real-DML integration tests, README in the seven-section order, `docs/case-study.md`.
+3. PR 7 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there.
 
 ## Decisions made
 
