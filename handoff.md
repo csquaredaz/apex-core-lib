@@ -26,15 +26,14 @@ PR 8 `ci(release)` is on branch `ci/release`, as a **draft** (static checks only
 - `sfdx-project.json`: `1.0.0.NEXT` / `ver 1.0`, plus `definitionFile` so the build org has Orders enabled (core tests use `Order`).
 - Verified locally: CLI flags and report JSON fields (read from the `@salesforce/packaging` source), the tag-match and `04t` checks, and that the YAML parses. Not verified: an actual version build (no version created yet; 6/6 package creates left).
 
-**When the budget frees up (rolling 24 h; check with `sf org list limits --target-org devhub`), about 4 orgs are needed:**
+**CI budget fix (ADR 0008, Chad chose option b):** `ci.yml` has a new `reuse` job. On a push to `main` it reuses the PR's scratch-org result when the merge commit's tree equals the PR head's tree and that head has a green scratch-org run. Otherwise it creates a fresh org, as before. A dry run against the real merges `041f99e` and `26592ca` found the matching green runs and their 100% coverage, so both merges would have cost 0 orgs. The job conditions now use `!cancelled()`. Back-port the job to E's `sf-repo-scaffold` CI template.
 
-1. Re-run the failed `main` job: `gh run rerun 43262725125 --failed`.
-2. Mark PR 8 ready (1 org), then Chad merges, then check the `main` run (1 org).
-3. **Ask Chad before tagging** `v1.0.0`: it creates a package version and a public-facing GitHub release.
-4. R1 probe (1 org): a fresh scratch org, install the beta `04t`, deploy a probe test class that uses `Mocks`, `FakeId` and `RecordingLogger`, and run it. If it fails, fall back to plain `public` classes (see R1).
-5. Add the install line to the README quick start. Chad promotes through the workflow when ready.
+**When the budget frees up (rolling 24 h; check with `sf org list limits --target-org devhub`), about 2 orgs are needed:**
 
-**Open decision (budget):** each PR currently costs about 2 scratch orgs (one when marked ready, one on `main`), so a Developer Edition Dev Hub supports about 3 PRs a day. Options: (a) accept it and pace the PRs (the current approach); (b) skip the `main` scratch-org run when the merge commit's tree matches a PR head that already passed; (c) run the `main` job on a schedule instead. Ask Chad before B, C or F, which have the same budget.
+1. Mark PR 8 ready (1 org). Chad merges. The `main` run should take the **reuse** path (0 orgs) and also proves the PR 7 tree, so re-running the failed job 43262725125 isn't needed.
+2. **Ask Chad before tagging** `v1.0.0`: it creates a package version and a public-facing GitHub release. The release workflow's package build uses a build org, not a scratch-org signup (to confirm on the first run).
+3. R1 probe (1 org): a fresh scratch org, install the beta `04t`, deploy a probe test class that uses `Mocks`, `FakeId` and `RecordingLogger`, and run it. If it fails, fall back to plain `public` classes (see R1).
+4. Add the install line to the README quick start. Chad promotes through the workflow when ready.
 
 ## Next (after v1.0.0)
 
@@ -62,6 +61,7 @@ Repo A's definition of done: CI green, README complete, ADRs written, Code Analy
 | Example booking flow       | After-insert → service enqueues `CarrierBookingJob` (Queueable) → gateway → UoW                                        | Synchronous invocable (a trigger can't call out anyway)         | handoff  |
 | Example credentials        | External Credential (Custom protocol, no secret) + Named Credential (SecuredEndpoint)                                  | Legacy Named Credential (deprecated model)                      | handoff  |
 | Docs vs example            | Separate PRs: example app (PR 6), README + case study (PR 7), release (PR 8)                                           | One PR as planned                                               | handoff  |
+| `main` CI scratch org      | Reuse the PR's green result when the merge tree is identical; otherwise a fresh org                                    | Pace PRs to the budget; scheduled `main` runs                   | ADR 0008 |
 
 ## Open risks
 
