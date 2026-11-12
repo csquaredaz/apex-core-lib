@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 2
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 2 (PRs 4–5)
 
 ## Done
 
@@ -14,27 +14,29 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 2
 - PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
 - Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
 
-## Resume here (PR 4 open)
+## Resume here (PR 5 open)
 
-PR 4 `feat(triggers)` is built on branch `feat/domain-triggers` and verified in `acl-dev`: 134 tests pass, 100% org-wide coverage, Code Analyzer 0 High. Next step: wait for CI on the PR, then Chad merges.
+PR 4 merged (`89cd5ce`), the `main` run is green, and the badge reads 99%: one `TriggerContext` line runs only in a real trigger, and PR 6 covers it. The PR 4 detail is in ADR 0006.
+
+PR 5 `feat(callout)` is built on branch `feat/callout-client` and verified in `acl-dev`: 165 tests pass, 100% org-wide coverage, Code Analyzer 0 High. Next step: wait for CI on the PR, then Chad merges.
 
 What shipped, against the brief:
 
-| Class                                            | Notes                                                                                                                                                                                                              |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `IDomain`, `SObjectDomain`, `IDomainConstructor` | Renamed from `Domain`: it shadows `System.Domain` (PMD `TypeShadowsBuiltInNamespace`, High). Records arrive through a per-domain `IDomainConstructor` class, chosen by Chad (FFLIB `IConstructable`).              |
-| `DomainFactory` + `Application.Domain`           | `newInstance(records)`, `newInstance(type)` (empty typed list), `newInstance(records, type)`, `setMock`. Checks that the built domain owns the requested type, and rejects a constructor that returns null.        |
-| `TriggerDispatcher`                              | Order: kill switch, bypass, depth guard, then domain resolution. Depth is 2 by default, `setMaxDepth(type, n)` changes it (chosen by Chad), and a skipped run logs `ILogger.warn`. Depth is released in `finally`. |
-| `TriggerContext`                                 | Adapter with a public constructor for fake contexts. `current()` throws outside a trigger. Its return line (1 line, 97%) is covered by the `example/` trigger in PR 6.                                             |
-| `Trigger_Setting__mdt`                           | `SObject_Type__c` (text) and `Is_Active__c` (subscriber-controlled). Any inactive row for a type wins.                                                                                                             |
+| Class                    | Notes                                                                                                                                                                                                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ICalloutClient`         | Port. `Application.Service` binds it to `CalloutClient` by default.                                                                                                                                                                                                  |
+| `CalloutClient`          | Up to 2 immediate retries on a transport error, 408, 500, 502, 503 or 504, for idempotent requests only. When retries run out it throws (Chad's call). Each failed attempt logs `ILogger.warn` with the correlation id. Stops early if the callout limit is reached. |
+| `CalloutRequest`         | Builder. `callout:<NamedCredential><path>` only; the path must be empty or start with `/` or `?`. `X-Correlation-Id` is generated and reused across retries. `withIdempotencyKey` makes POST/PATCH retryable. Timeout 1–120000 ms (default 10000).                   |
+| `CalloutResponse`        | Typed and read-only; case-insensitive headers, `isSuccess()`, `getRetryAfterSeconds()`, `readJson(Type)`. Public constructor, so consumers can mock `ICalloutClient`.                                                                                                |
+| `RetryPolicy`            | Strategy (virtual). 0–2 retries, enforced. 429 is **not** retried (Chad's call; the plan said retry), and neither are 501 or 505.                                                                                                                                    |
+| `CalloutClientException` | Renamed from `CalloutException`, which shadows `System.CalloutException`. Carries `getAttempts()` and `getLastResponse()`, with the platform error as its cause.                                                                                                     |
 
-ADR 0006 records the construction, kill-switch and depth-guard decisions. The callout ADR is now 0007.
+ADR 0007 records these decisions.
 
-## Next (after PR 4 merges)
+## Next (after PR 5 merges)
 
-1. PR 5 `feat(callout)`: `ICalloutClient`, `CalloutClient` (Named Credential only, timeout, correlation-id header, at most 2 synchronous retries on 408/429/5xx/`CalloutException` for idempotent verbs or when `Idempotency-Key` is set), `CalloutRequest` (Builder), `CalloutResponse`, `RetryPolicy`, `CalloutException`. ADR 0007 (sync retry only; real backoff is async and belongs to C).
-2. PR 6 `feat(example)` + docs: unpackaged `example/` directory (`Shipment__c`, `ShipmentTrigger`, selector, domain, service, `CarrierGateway`, `TestDataFactory`, `Shipment_Manager` permission set, binding records, `Carrier` Named Credential with no secrets), real-DML integration tests, README in the seven-section order, `docs/case-study.md`.
-3. PR 7 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there.
+1. PR 6 `feat(example)` + docs: unpackaged `example/` directory (`Shipment__c`, `ShipmentTrigger`, selector, domain, service, `CarrierGateway`, `TestDataFactory`, `Shipment_Manager` permission set, binding records, `Carrier` Named Credential with no secrets), real-DML integration tests, README in the seven-section order, `docs/case-study.md`.
+2. PR 7 `ci(release)`: on tag `v*`, run `sf package version create --code-coverage`. Promotion stays a manual `workflow_dispatch`. Cut v1.0.0 and verify R1 there.
 
 ## Decisions made
 
@@ -52,6 +54,9 @@ ADR 0006 records the construction, kill-switch and depth-guard decisions. The ca
 | Domain construction        | A per-domain `IDomainConstructor` class; records are `final`                                                           | No-argument constructor plus `initialise(records)`              | ADR 0006 |
 | Trigger kill switch        | `Trigger_Setting__mdt`; no row means active; any inactive row wins                                                     | Hierarchy custom setting                                        | ADR 0006 |
 | Re-entry guard             | Depth 2 per type by default, `setMaxDepth` in code, a skip logs a warning                                              | `Max_Depth__c` on the setting; run-once flag                    | ADR 0006 |
+| Retry boundary             | Up to 2 immediate retries in the client; async backoff belongs to the caller (C)                                       | Async re-enqueue in the client; no retry                        | ADR 0007 |
+| Retries run out            | Throw `CalloutClientException` with attempts and last response                                                         | Return the last response                                        | ADR 0007 |
+| 429 handling               | Not retried synchronously; `getRetryAfterSeconds()` for the caller                                                     | Retry like a 5xx (original plan)                                | ADR 0007 |
 
 ## Open risks
 
@@ -59,13 +64,16 @@ ADR 0006 records the construction, kill-switch and depth-guard decisions. The ca
 
 ## Plan deviations
 
+- 429 is no longer retried synchronously, and the exception is `CalloutClientException` rather than `CalloutException` (ADR 0007).
 - The base domain class is `SObjectDomain`, not `Domain` as planned, to avoid shadowing `System.Domain`.
 - Each factory lands with its layer (`SelectorFactory` and `UnitOfWorkFactory` in PR 3, `DomainFactory` in PR 4) rather than all of them in PR 2, because each needs the interface it returns.
 - `SecureDml` with two modes became `UserModeDml` plus the `StripInaccessibleDml` decorator, so the decorator wraps one thing.
 
 ## Notes for the next session
 
-- More Apex traps found in PR 4: `bulk` is a reserved word (a constant named `BULK` fails to parse), Apex allows only one level of inner classes, and inner classes can't declare static members.
+- More Apex traps found in PR 4: `bulk` is a reserved word (a constant named `BULK` fails to parse), Apex allows only one level of inner classes, and inner classes can't declare static members. PR 5 added more: `number` is reserved, `HttpRequest` has no `getTimeout()`, `JSON.deserialize` rejects `Map<String, Object>`, and macOS `sed` has no `\b` (use `perl -pi`).
+- Code Analyzer on PR 5: 0 High. Two accepted Moderate findings: class-total complexity on `CalloutRequest` (one guard per builder input, as with `UnitOfWork`) and the four-parameter `CalloutClientException.failed`.
+- Candidate for README section 7 ("Built with Claude Code"): Code Analyzer's `TypeShadowsBuiltInNamespace` caught `Domain` vs `System.Domain` in PR 4, and design review caught `CalloutException` vs `System.CalloutException` before it compiled. Both were renamed, and ADRs 0006/0007 record why.
 
 - Apex reserves `inner`, and constants clash with SObject names case-insensitively (`ORDER` vs `Order`). Apex has no `IllegalStateException`. Minimum Access test users plus a test-created permission set work in a Developer Edition scratch org (no license limit hit).
 - Code Analyzer on PR 3: 0 High. `UnitOfWork` has a class-total complexity warning (Moderate) from guarding every registration mistake; the method-level findings were refactored away.
