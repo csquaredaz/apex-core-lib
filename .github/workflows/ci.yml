@@ -81,6 +81,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      coverage: ${{ steps.apex-tests.outputs.coverage }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -115,7 +117,16 @@ jobs:
           SF_SCRATCH_SIGNUP_CALLBACK_URL: http://localhost:1717/OauthRedirect
 
       - name: Run Apex tests with coverage
+        id: apex-tests
         run: |
+          # RunLocalTests fails with INVALID_INPUT when the org has no tests, which is true until a
+          # repo's first Apex lands. Skip (and say so) only when no package directory holds a test.
+          dirs=$(node -p 'require("./sfdx-project.json").packageDirectories.map((d) => d.path).join(" ")')
+          # shellcheck disable=SC2086 # word splitting over the directory list is intended
+          if ! grep -rqli --include='*.cls' '@istest' $dirs; then
+            echo "### Apex tests"$'\n\n'"No Apex test classes in the repo yet, so this step was skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           mkdir -p tests/apex
           sf apex run test \
             --target-org ci-org \
@@ -124,11 +135,16 @@ jobs:
             --result-format human \
             --output-dir tests/apex \
             --wait 30
-          # Coverage is published to the job summary and as an artifact; no third-party service.
+          # Coverage goes to the job summary, an artifact and (on main) the badge job.
+          # No third-party service. The file may or may not carry a "result" wrapper, so accept both.
           node -e '
-            const r = require("./tests/apex/test-result.json").result.summary;
-            console.log(`### Apex tests\n\n| Outcome | Tests | Org-wide coverage |\n|---|---|---|\n| ${r.outcome} | ${r.testsRan} | ${r.orgWideCoverage} |`);
-          ' >> "$GITHUB_STEP_SUMMARY"
+            const fs = require("fs");
+            const j = require("./tests/apex/test-result.json");
+            const r = (j.result || j).summary;
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              `### Apex tests\n\n| Outcome | Tests | Org-wide coverage |\n|---|---|---|\n| ${r.outcome} | ${r.testsRan} | ${r.orgWideCoverage} |\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `coverage=${parseInt(r.orgWideCoverage, 10) || 0}\n`);
+          '
 
       - name: Upload Apex test results
         if: always()
@@ -143,3 +159,45 @@ jobs:
         run: |
           sf org delete scratch --target-org ci-org --no-prompt || true
           rm -f "$RUNNER_TEMP/server.key"
+
+  # Live coverage badge without a SaaS account (ADR 0003). Runs only for a green push to main and
+  # is the only job with write access. It appends to the orphan `badges` branch and never
+  # force-pushes. The README reads the file through a shields.io endpoint badge.
+  coverage-badge:
+    name: coverage badge (main only)
+    needs: scratch-org
+    # The coverage check skips the job before any Apex tests exist, rather than publishing 0%.
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.scratch-org.outputs.coverage != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Write coverage.json to the badges branch
+        env:
+          COVERAGE: ${{ needs.scratch-org.outputs.coverage }}
+        run: |
+          : "${COVERAGE:?scratch-org job reported no coverage}"
+          if git ls-remote --exit-code --heads origin badges >/dev/null; then
+            git fetch --depth 1 origin badges:badges
+            git switch badges
+          else
+            git switch --orphan badges
+            git rm -rf --quiet . || true
+          fi
+          if   [ "$COVERAGE" -ge 90 ]; then color=brightgreen
+          elif [ "$COVERAGE" -ge 75 ]; then color=yellow
+          else color=red; fi
+          printf '{"schemaVersion":1,"label":"apex coverage","message":"%s%%","color":"%s"}\n' \
+            "$COVERAGE" "$color" > coverage.json
+          git add coverage.json
+          if git diff --cached --quiet; then
+            echo "Coverage unchanged at ${COVERAGE}%."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit --quiet -m "chore(badges): apex coverage ${COVERAGE}%"
+          git push origin badges
