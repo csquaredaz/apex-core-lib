@@ -1,6 +1,6 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
+Last updated: 2026-11-12 · Phase: roadmap step 1, session 1
 
 ## Done
 
@@ -10,13 +10,13 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 - ADR 0001 (unlocked package, no namespace) moved here from the workspace.
 - Plan approved: file tree, class list, test plan and a 7-PR delivery sequence.
 - PR 1 merged: ADRs 0002 and 0003, the coverage-badge job, Orders enabled, and CI that skips Apex tests until a test class exists.
-- PR 2 `feat(di)` (open): `Application.Service`, `ServiceFactory`, `BindingRegistry`, `DI_Binding__mdt`, the `ILogger` and `IAlertSink` ports with `DebugLogger` / `NoOpAlertSink`, the `Alert` value type, and the test kit `Mocks`, `FakeId`, `RecordingLogger`. ADR 0004. The CI test step reads the real result file and gates on all tests passing and at least 90% coverage. 36 tests, 100% coverage in the dev org.
+- PR 2 `feat(di)` merged: `Application.Service`, `ServiceFactory`, `BindingRegistry`, `DI_Binding__mdt`, the `ILogger` and `IAlertSink` ports with `DebugLogger` / `NoOpAlertSink`, the `Alert` value type, and the test kit `Mocks`, `FakeId`, `RecordingLogger`. ADR 0004. The CI test step reads the real result file and gates on all tests passing and at least 90% coverage. 36 tests, 100% coverage in the dev org.
+- PR 3 `feat(data)` (open): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage in the dev org, including restricted-user tests.
 
 ## Next
 
-1. Land PR 2.
-2. PR 3 `feat(data)`: `SelectorFactory` + `SObjectSelector`, `IDml` / `SystemDml` / `SecureDml`, `UnitOfWorkFactory` + `UnitOfWork`. ADR 0005 (user mode by default).
-3. PR 4 `feat(triggers)`: `DomainFactory`, `Domain`, `TriggerDispatcher`, `TriggerContext`, `Trigger_Setting__mdt`.
+1. Land PR 3.
+2. PR 4 `feat(triggers)`: `DomainFactory`, `Domain`, `TriggerDispatcher`, `TriggerContext`, `Trigger_Setting__mdt`.
 
 ## Decisions made
 
@@ -29,6 +29,8 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 | Inbound-adapter port for C | Deferred to C. Adding an interface later is a minor version bump                                                       | Designing it now, before C exists                               | handoff  |
 | DI resolution              | Service Locator over a registry with `DI_Binding__mdt` overrides                                                       | Code-only registry per consumer, constructor injection only     | ADR 0004 |
 | `ILogger.error` signature  | Keep `error(String, Exception)` and ship `RecordingLogger` as the test double                                          | `Object cause`, an `ErrorDetail` value type                     | ADR 0002 |
+| Selector and domain lookup | By SObject type via `DI_Binding__mdt.Kind__c` (FFLIB-style `Application.Selector`)                                     | Selectors via the service factory; one metadata type per kind   | ADR 0004 |
+| ENFORCE vs STRIP           | `UserModeDml` (default, throws) and a separate `StripInaccessibleDml` decorator, instead of one class with a mode flag | `SecureDml` with an ENFORCE/STRIP mode                          | ADR 0005 |
 
 ## Open risks
 
@@ -37,9 +39,12 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 ## Plan deviations
 
 - Each factory lands with its layer (`SelectorFactory` and `UnitOfWorkFactory` in PR 3, `DomainFactory` in PR 4) rather than all of them in PR 2, because each needs the interface it returns.
+- `SecureDml` with two modes became `UserModeDml` plus the `StripInaccessibleDml` decorator, so the decorator wraps one thing.
 
 ## Notes for the next session
 
+- Apex reserves `inner`, and constants clash with SObject names case-insensitively (`ORDER` vs `Order`). Apex has no `IllegalStateException`. Minimum Access test users plus a test-created permission set work in a Developer Edition scratch org (no license limit hit).
+- Code Analyzer on PR 3: 0 High. `UnitOfWork` has a class-total complexity warning (Moderate) from guarding every registration mistake; the method-level findings were refactored away.
 - **Stub API limits (verified in a scratch org):** no inner types, no method that takes the base `Exception` type, and `@IsTest` classes can't be `virtual`. Mock top-level interfaces only.
 - Apex is case-insensitive, so a local variable named like a class (`Alert alert`) breaks static references. Prettier formats Apex at 2-space indentation; match it in any scripted edit.
 - `sf apex run test --output-dir` writes `test-result-<runId>.json` (run Id in `test-run-id.txt`), not `test-result.json`. The scaffold template's summary step has this bug: back-port the fix to E.
