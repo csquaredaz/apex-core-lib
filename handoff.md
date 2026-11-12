@@ -22,10 +22,14 @@ Last updated: 2026-11-12 · Phase: roadmap step 1, session 3 (v1.0.0 and R1)
 - **R1 resolved:** in a fresh scratch org with the beta installed, a throwaway consumer test class (kept outside the repo) using `FakeId`, `RecordingLogger`, `Mocks` and `Application.Service.setMock` deployed and passed. The test kit stays `@IsTest`.
 - README quick start gained the install command, and `sfdx-project.json` gained the `apex-core-lib@1.0.0-1` alias.
 
+- Definition of done checked (2026-11-12): CI green, 0 High findings, no `TODO`s, ApexDoc complete, README 7 sections, ADRs 0001–0008, case study, and a full-history gitleaks scan that found no leaks.
+- Prep for going public (PR 11): CI logs and the test-result artifact no longer name any org. `scripts/redact-org-details.sh` masks the Dev Hub login, scratch-org setup, delete and promote output, and the test step drops its stdout, strips the summary's org fields and deletes the JUnit file.
+- Workspace `CLAUDE.md` and `roadmap.md` mark A done and B next.
+
 ## Resume here
 
 1. Done: Chad promoted `1.0.0-1` through the `release.yml` dispatch (2026-11-12). The release is now latest, and the promote job now rewrites the release notes, dropping the beta wording.
-2. Definition of done (below), then ask Chad about the workspace `CLAUDE.md` status table and `roadmap.md`, and before making the repo public.
+2. Before making the repo public (Chad approved doing it after PR 11): decide what to do with older workflow runs, whose logs and artifacts still contain org details; then switch visibility and check the coverage badge renders.
 3. Back-port to E before repo B: the ADR 0008 `reuse` job and `!cancelled()` conditions, the test-result filename fix, the RunLocalTests skip, the `badges` job, and a custom PMD ruleset for `method_condition_result` test names.
 
 ## Next (after v1.0.0)
