@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description
+  >Binds an Apex interface to the implementation that Application factories return. One active row per interface; it overrides the library's code default.</description>
+    <label>DI Binding</label>
+    <pluralLabel>DI Bindings</pluralLabel>
+    <visibility>Public</visibility>
+</CustomObject>
