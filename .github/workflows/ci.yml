@@ -155,16 +155,21 @@ jobs:
           SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SF_DEVHUB_USERNAME: ${{ secrets.SF_DEVHUB_USERNAME }}
         run: |
+          set -o pipefail
           printf '%s\n' "$SF_JWT_KEY" > "$RUNNER_TEMP/server.key"
+          # The login prints the Dev Hub org Id; the redact filter masks it in the public log.
           sf org login jwt \
             --client-id "$SF_CONSUMER_KEY" \
             --jwt-key-file "$RUNNER_TEMP/server.key" \
             --username "$SF_DEVHUB_USERNAME" \
             --alias devhub \
-            --set-default-dev-hub
+            --set-default-dev-hub 2>&1 | bash scripts/redact-org-details.sh
 
       - name: Create scratch org, install dependencies, deploy
-        run: bash scripts/org-setup.sh ci-org
+        # Signup, install and permission-set output name the scratch org; mask it in the log.
+        run: |
+          set -o pipefail
+          bash scripts/org-setup.sh ci-org 2>&1 | bash scripts/redact-org-details.sh
         env:
           SF_SCRATCH_DURATION: "1"
           # The Dev Hub authenticates through an External Client App, which scratch-org signup
@@ -186,21 +191,29 @@ jobs:
           fi
           mkdir -p tests/apex
           # Keep going on test failures so the summary is still written; the gate below fails the job.
+          # Stdout is dropped because it names the scratch org (Id, username, instance); results are
+          # read from --output-dir instead, and scrubbed below before they become an artifact.
           sf apex run test \
             --target-org ci-org \
             --test-level RunLocalTests \
             --code-coverage \
-            --result-format human \
+            --result-format json \
             --output-dir tests/apex \
-            --wait 30 || true
+            --wait 30 > /dev/null || true
+          # The JUnit report repeats the org details and nothing reads it.
+          rm -f tests/apex/*-junit.xml
           # Coverage goes to the job summary, an artifact and (on main) the badge job; no third-party
           # service. The CLI writes test-result-<runId>.json, with the run Id in test-run-id.txt.
           # Gate: every test passes and org-wide coverage is at least MIN_COVERAGE (CLAUDE.md floor).
           MIN_COVERAGE=90 node -e '
             const fs = require("fs");
             const runId = fs.readFileSync("tests/apex/test-run-id.txt", "utf8").trim();
-            const j = JSON.parse(fs.readFileSync(`tests/apex/test-result-${runId}.json`, "utf8"));
+            const file = `tests/apex/test-result-${runId}.json`;
+            const j = JSON.parse(fs.readFileSync(file, "utf8"));
             const s = (j.result || j).summary;
+            // Drop the org details before the file is uploaded; the reuse job needs only coverage.
+            for (const key of ["hostname", "orgId", "userId", "username"]) delete s[key];
+            fs.writeFileSync(file, JSON.stringify(j, null, 2));
             const coverage = parseInt(s.orgWideCoverage, 10) || 0;
             const min = Number(process.env.MIN_COVERAGE);
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
@@ -221,7 +234,7 @@ jobs:
       - name: Delete scratch org and key
         if: always()
         run: |
-          sf org delete scratch --target-org ci-org --no-prompt || true
+          sf org delete scratch --target-org ci-org --no-prompt 2>&1 | bash scripts/redact-org-details.sh || true
           rm -f "$RUNNER_TEMP/server.key"
 
   # Live coverage badge without a SaaS account (ADR 0003). Runs only for a green push to main and
