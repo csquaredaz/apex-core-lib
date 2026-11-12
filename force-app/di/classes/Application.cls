@@ -18,7 +18,8 @@ public with sharing class Application {
       BindingRegistry.Kind.SERVICE,
       new Map<String, Type>{
         ILogger.class.getName() => DebugLogger.class,
-        IAlertSink.class.getName() => NoOpAlertSink.class
+        IAlertSink.class.getName() => NoOpAlertSink.class,
+        ICalloutClient.class.getName() => CalloutClient.class
       }
     )
   );
