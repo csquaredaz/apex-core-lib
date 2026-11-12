@@ -7,6 +7,9 @@
       "versionName": "ver 0.1",
       "versionNumber": "0.1.0.NEXT",
       "versionDescription": "Apex platform foundation library (DI, FFLIB-style layers, triggers, secure DML, callouts)."
+    },
+    {
+      "path": "example"
     }
   ],
   "name": "apex-core-lib",
