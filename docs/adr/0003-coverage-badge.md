@@ -26,6 +26,7 @@ Option 1. It's the only option that puts coverage in the README without a third-
 - The `coverage-badge` job runs only on `push` to `main`, needs `scratch-org`, and is the only job with `contents: write`. PR runs never get write access.
 - The job appends one commit per green `main` run to `badges`. It never force-pushes, so the branch history doubles as a coverage log.
 - Colours: 90% or more is green, 75–89% is yellow (the promote floor still passes), and below 75% is red.
+- Before a repo has any Apex test class, the scratch-org job skips `RunLocalTests` (which otherwise fails with `INVALID_INPUT: No tests found`) and reports no coverage, so the badge job is skipped instead of publishing 0%. Once tests exist the skip is inert.
 - Until the repo is public, the coverage badge shows as an error. That's expected.
 - Back-port to the `sf-repo-scaffold` template in `claude-code-salesforce-skills` once this has run green here.
 - Rollback: delete the job and the badge line. The `badges` branch can stay or be deleted, since nothing else reads it.

@@ -119,6 +119,14 @@ jobs:
       - name: Run Apex tests with coverage
         id: apex-tests
         run: |
+          # RunLocalTests fails with INVALID_INPUT when the org has no tests, which is true until a
+          # repo's first Apex lands. Skip (and say so) only when no package directory holds a test.
+          dirs=$(node -p 'require("./sfdx-project.json").packageDirectories.map((d) => d.path).join(" ")')
+          # shellcheck disable=SC2086 # word splitting over the directory list is intended
+          if ! grep -rqli --include='*.cls' '@istest' $dirs; then
+            echo "### Apex tests"$'\n\n'"No Apex test classes in the repo yet, so this step was skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           mkdir -p tests/apex
           sf apex run test \
             --target-org ci-org \
@@ -158,7 +166,10 @@ jobs:
   coverage-badge:
     name: coverage badge (main only)
     needs: scratch-org
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # The coverage check skips the job before any Apex tests exist, rather than publishing 0%.
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.scratch-org.outputs.coverage != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write

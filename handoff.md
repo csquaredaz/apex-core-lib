@@ -33,7 +33,7 @@ Last updated: 2026-11-11 · Phase: roadmap step 1, session 1
 ## Notes for the next session
 
 - The old name `csquaredaz/apex-core-lib` redirected to the renamed `legacy-apex-core-lib`. Creating the new repo ended that redirect. Always check a repo name with `gh repo view` before pushing.
-- An empty `force-app/` deploys cleanly (no `--source-dir`, so the CLI returns empty). Still unverified: whether `RunLocalTests` with zero tests passes. PR 1 is the first run that tests it.
+- An empty `force-app/` deploys cleanly (no `--source-dir`, so the CLI returns empty). `RunLocalTests` with zero tests fails (`INVALID_INPUT`), so CI skips the test step until a test class exists. Scratch-org signup through `PlatformCLI` was proven in CI on PR 1. Back-port both CI fixes to E's scaffold template.
 - Package promotion stays a manual `workflow_dispatch` because promotion is irreversible.
 - Iterate as draft PRs (static checks only) and mark each one ready once, so it costs about one scratch org per PR.
 - Back-port the `badges`-branch job to E's scaffold template once it's proven here.
