@@ -2,10 +2,10 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Interface__c</fullName>
     <description
-  >Fully qualified interface name, for example ILogger or OrdersService.IOrders. Matched case-insensitively.</description>
+  >The binding key, matched case-insensitively. Service rows: the interface name, for example ILogger. Selector and Domain rows: the SObject API name, for example Shipment__c.</description>
     <externalId>false</externalId>
     <fieldManageability>DeveloperControlled</fieldManageability>
-    <label>Interface</label>
+    <label>Interface or SObject</label>
     <length>255</length>
     <required>true</required>
     <unique>false</unique>

@@ -15,7 +15,7 @@ public with sharing class ServiceFactory {
 
   /**
    * @description Creates a factory that resolves implementations through the given registry.
-   * @param registry The binding registry to resolve implementation types from.
+   * @param registry A `SERVICE` binding registry.
    */
   public ServiceFactory(BindingRegistry registry) {
     this.registry = registry;
@@ -25,20 +25,24 @@ public with sharing class ServiceFactory {
    * @description Returns an implementation of the requested interface.
    * @param interfaceType The interface to instantiate.
    * @return The mock registered for the interface, or a new instance of its bound implementation.
-   * @throws ApplicationException If the interface has no valid binding.
+   * @throws ApplicationException If the interface is null or has no valid binding.
    */
   public Object newInstance(Type interfaceType) {
-    if (interfaceType != null && mocksByInterface.containsKey(interfaceType)) {
+    if (interfaceType == null) {
+      throw new ApplicationException('Cannot create a service for a null interface type.');
+    }
+    if (mocksByInterface.containsKey(interfaceType)) {
       return mocksByInterface.get(interfaceType);
     }
-    return registry.resolve(interfaceType).newInstance();
+    return registry.resolve(interfaceType.getName(), interfaceType).newInstance();
   }
 
   /**
    * @description Registers a test double for an interface, for the rest of the transaction.
    * Intended for tests only; it's public so consumer packages' tests can inject mocks.
    * @param interfaceType The interface the mock stands in for.
-   * @param mock The mock, typically from `Mocks.stub(interfaceType)`.
+   * @param mock The mock, for example from `Mocks.stub(interfaceType)` or a `RecordingLogger`.
+   * @throws ApplicationException If either argument is null.
    */
   public void setMock(Type interfaceType, Object mock) {
     if (interfaceType == null || mock == null) {

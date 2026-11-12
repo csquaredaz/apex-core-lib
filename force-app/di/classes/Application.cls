@@ -1,14 +1,12 @@
 /**
  * @description Static entry point to the application factories (FFLIB-compatible naming).
  *
- * This is a Service Locator over the `BindingRegistry` (ADR 0004 names the trade-off): Apex has
- * no constructor injection container, and the Stub API needs a seam to substitute mocks.
- * Collaborators are always requested by interface, so the locator stays at the edges of each class.
+ * This is a Service Locator over `BindingRegistry` (ADR 0004 names the trade-off): Apex has no
+ * constructor-injection container, and the Stub API needs a seam to substitute mocks.
+ * Collaborators are always requested by interface or SObject type, at the edge of a class.
  *
- * Code defaults bind the library's ports to safe built-in adapters. A consumer rebinds a port by
- * shipping one active `DI_Binding__mdt` row, for example `ILogger` → `PlatformEventLogger`.
- *
- * Later factories (`Selector`, `UnitOfWork`, `Domain`) join this class with their layers.
+ * Code defaults bind the library's ports to safe built-in adapters. A consumer rebinds a port, or
+ * binds its own services and selectors, with active `DI_Binding__mdt` rows.
  * @group Public API
  */
 public with sharing class Application {
@@ -17,7 +15,23 @@ public with sharing class Application {
    */
   public static final ServiceFactory Service = new ServiceFactory(
     new BindingRegistry(
-      new Map<Type, Type>{ ILogger.class => DebugLogger.class, IAlertSink.class => NoOpAlertSink.class }
+      BindingRegistry.Kind.SERVICE,
+      new Map<String, Type>{
+        ILogger.class.getName() => DebugLogger.class,
+        IAlertSink.class.getName() => NoOpAlertSink.class
+      }
     )
   );
+
+  /**
+   * @description Selectors, resolved by SObject type. The library ships no selector bindings.
+   */
+  public static final SelectorFactory Selector = new SelectorFactory(
+    new BindingRegistry(BindingRegistry.Kind.SELECTOR, null)
+  );
+
+  /**
+   * @description Units of Work; each caller supplies its commit order.
+   */
+  public static final UnitOfWorkFactory UnitOfWork = new UnitOfWorkFactory();
 }

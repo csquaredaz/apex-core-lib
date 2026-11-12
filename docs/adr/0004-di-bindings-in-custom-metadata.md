@@ -28,4 +28,5 @@ Option 1. Rebinding a port across package boundaries is the requirement that rul
 - **No SOQL.** Rows come from `DI_Binding__mdt.getAll()`, read once per transaction.
 - **Naming.** `Application.Service` breaks PMD's constant-naming rule on purpose, to keep FFLIB-compatible call sites (`Application.Selector`, `Application.UnitOfWork` follow in later PRs). Code Analyzer reports it as Moderate, below the CI threshold.
 - `setMock` is public so consumers' tests can use it. Nothing stops production code from calling it, and code review is the control. A `Test.isRunningTest()` guard would be a test branch in production code, which the testing standard forbids.
+- **Kinds (added in PR 3):** `DI_Binding__mdt.Kind__c` (Service, Selector, Domain) lets one metadata type serve every factory. Service rows key on the interface name, while Selector and Domain rows key on the SObject API name, so `Interface__c` has two meanings, chosen over a metadata type per kind. A blank `Kind__c` means Service. `SelectorFactory` also checks that the bound selector queries the requested SObject type.
 - Rollback: deactivate the `DI_Binding__mdt` row and the code default applies again.
