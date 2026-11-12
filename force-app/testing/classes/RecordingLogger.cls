@@ -13,6 +13,9 @@
  */
 @IsTest
 public class RecordingLogger implements ILogger {
+  private final List<Entry> recorded = new List<Entry>();
+  private Integer flushes = 0;
+
   /** @description One recorded log call. */
   public class Entry {
     /** @description The level the entry was logged at. */
@@ -28,9 +31,6 @@ public class RecordingLogger implements ILogger {
       this.cause = cause;
     }
   }
-
-  private final List<Entry> recorded = new List<Entry>();
-  private Integer flushes = 0;
 
   /** @description Records a DEBUG entry. @param message The entry text. */
   public void debug(String message) {
