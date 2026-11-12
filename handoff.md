@@ -1,40 +1,43 @@
 # Handoff: apex-core-lib
 
-Last updated: 2026-11-12 · Phase: roadmap step 1, session 3 (v1.0.0 and R1)
+Last updated: 2026-11-12 · Phase: roadmap step 1 **complete** (3 sessions, 11 PRs)
 
-## Done
+## Status
 
-- GitHub repo `csquaredaz/apex-core-lib` created (private) and `main` pushed. CI secrets set by Chad, and JWT auth proven in CI.
-- Unlocked package `apex-core-lib` created on the Dev Hub (`0Ho` alias in `sfdx-project.json`).
-- Repository scaffolded from `apex-standards:sf-repo-scaffold`. API 68.0 confirmed against the Dev Hub.
-- ADR 0001 (unlocked package, no namespace) moved here from the workspace.
-- Plan approved: file tree, class list, test plan and a 7-PR delivery sequence.
-- PR 1 merged: ADRs 0002 and 0003, the coverage-badge job, Orders enabled, and CI that skips Apex tests until a test class exists.
-- PR 2 `feat(di)` merged: `Application.Service`, `ServiceFactory`, `BindingRegistry`, `DI_Binding__mdt`, the `ILogger` and `IAlertSink` ports with `DebugLogger` / `NoOpAlertSink`, the `Alert` value type, and the test kit `Mocks`, `FakeId`, `RecordingLogger`. ADR 0004. The CI test step reads the real result file and gates on all tests passing and at least 90% coverage. 36 tests, 100% coverage in the dev org.
-- PR 3 `feat(data)` merged (`a24afcf`): `DI_Binding__mdt.Kind__c`, `BindingRegistry` keyed by kind + string, `SelectorFactory` and `SObjectSelector` (user mode), `IDml` with `UserModeDml` (default), `StripInaccessibleDml` (decorator) and `SystemDml` (opt-in), `UnitOfWork` + `UnitOfWorkFactory`. ADR 0005. 94 tests, 100% coverage. `main` CI green, and the badge job has published `coverage.json` to `badges`.
-- Merged branches deleted: `chore/foundation-adrs`, `feat/di-container`. `feat/data-layer` is merged but not deleted yet (Chad deletes or asks).
+Repo A is **done and public**. `main` is green, coverage is 100%, and every definition-of-done item passes: CI green, 0 High Code Analyzer findings, no `TODO`s, ApexDoc on every public class, README in 7 sections, ADRs 0001–0008, `docs/case-study.md`, and a full-history gitleaks scan with no leaks.
 
-## Done in session 3
+**Released:** package version `1.0.0-1`, built from tag `v1.0.0` and promoted, with Id `04tak000000u0zpAAA`. The GitHub release `v1.0.0` is marked latest. Package coverage is 99%.
 
-- PRs 4–8 merged; `main` at `de0ed55` is green. The PR 8 merge took the ADR 0008 **reuse** path (0 orgs) and also covered the PR 7 tree, so the failed run 43262725125 doesn't need a re-run.
-- Tag `v1.0.0` pushed (Chad approved). `release.yml` build passed: version `1.0.0-1`, `04tak000000u0zpAAA`, 99% package coverage, `HasPassedCodeCoverageCheck` true, GitHub pre-release published.
-- **The package build uses no daily scratch-org signup** (DailyScratchOrgs stayed 5/6; Package2VersionCreates went 6 → 5).
-- **R1 resolved:** in a fresh scratch org with the beta installed, a throwaway consumer test class (kept outside the repo) using `FakeId`, `RecordingLogger`, `Mocks` and `Application.Service.setMock` deployed and passed. The test kit stays `@IsTest`.
-- README quick start gained the install command, and `sfdx-project.json` gained the `apex-core-lib@1.0.0-1` alias.
+## For consumers (repos B, C and F)
 
-- Definition of done checked (2026-11-12): CI green, 0 High findings, no `TODO`s, ApexDoc complete, README 7 sections, ADRs 0001–0008, case study, and a full-history gitleaks scan that found no leaks.
-- Prep for going public (PR 11): CI logs and the test-result artifact no longer name any org. `scripts/redact-org-details.sh` masks the Dev Hub login, scratch-org setup, delete and promote output, and the test step drops its stdout, strips the summary's org fields and deletes the JUnit file.
-- Workspace `CLAUDE.md` and `roadmap.md` mark A done and B next.
+- Install: `sf package install --package 04tak000000u0zpAAA --target-org <alias> --wait 20 --no-prompt`.
+- Declare the dependency: `"dependencies": [{ "package": "apex-core-lib@1.0.0-1" }]` in `sfdx-project.json`, with `packageAliases` mapping `apex-core-lib@1.0.0-1` to the `04t` Id. CI installs it before the deploy. The scaffold's `org-setup.sh` already installs dependencies.
+- B implements A's ports: `ILogger` (`debug`, `info`, `warn`, `error(String, Exception)`, `flush`) and `IAlertSink` (`send(List<Alert>)`). B binds its adapters with `DI_Binding__mdt` rows (Kind `Service`, ADR 0004), so A doesn't change.
+- **R1 is resolved:** consumer tests can use the test kit (`Mocks`, `FakeId`, `RecordingLogger`) and `Application.Service.setMock` straight from the installed no-namespace package.
+- A change to A's public API means a new A version: a minor version for additions, a major version for breaking changes. Tag `vX.Y.Z` after bumping `versionNumber`. `release.yml` builds a beta, and Chad promotes it through `workflow_dispatch` with `confirm=PROMOTE`.
 
-## Resume here
+## Session 3 (2026-11-12)
 
-1. Done: Chad promoted `1.0.0-1` through the `release.yml` dispatch (2026-11-12). The release is now latest, and the promote job now rewrites the release notes, dropping the beta wording.
-2. Before making the repo public (Chad approved doing it after PR 11): decide what to do with older workflow runs, whose logs and artifacts still contain org details; then switch visibility and check the coverage badge renders.
-3. Back-port to E before repo B: the ADR 0008 `reuse` job and `!cancelled()` conditions, the test-result filename fix, the RunLocalTests skip, the `badges` job, and a custom PMD ruleset for `method_condition_result` test names.
+- PR 8 merged; the `main` run took the ADR 0008 reuse path and spent no org.
+- Tagged `v1.0.0` (Chad approved). The build passed, and **a package build uses no daily scratch-org signup**; it only consumes one of the 6 daily package version creates.
+- R1 probe: a fresh scratch org, the beta installed, and a throwaway consumer test class (kept outside the repo) that passed.
+- PR 9: the README install section and the `1.0.0-1` alias. Chad promoted the version.
+- PR 10: the promote job now rewrites the release notes, dropping the beta wording. The `v1.0.0` notes were fixed by hand.
+- PR 11: CI logs and artifacts no longer name any org. `scripts/redact-org-details.sh` masks the Dev Hub login, scratch-org setup, delete and promote output. The test step sends its JSON stdout to `/dev/null`, strips `hostname`, `orgId`, `userId` and `username` from the summary, and deletes the JUnit file.
+- With Chad's approval, every workflow run older than `main` run 43298802736 was deleted, because the older logs showed the Dev Hub org Id. The repo was then made public. Both badges render.
+- All merged branches were deleted, leaving only `main` and `badges`. The probe org was deleted. Workspace `CLAUDE.md` and `roadmap.md` mark A done and B next.
 
-## Next (after v1.0.0)
+## Next: back-port to E before repo B
 
-Repo A's definition of done: CI green, README complete, ADRs written, Code Analyzer clean, no `TODO`s, case study written. Update the workspace `CLAUDE.md` status table and `roadmap.md` (Chad's call), and ask Chad before making the repo public.
+Update the `sf-repo-scaffold` CI template in `claude-code-salesforce-skills`, so that B starts from the fixed template:
+
+1. The ADR 0008 `reuse` job, plus `!cancelled()` conditions on the jobs that follow it.
+2. The test-result filename fix: `test-result-<runId>.json`, with the run Id read from `test-run-id.txt`.
+3. Skip `RunLocalTests` when no test class exists yet.
+4. The `badges` job (ADR 0003).
+5. A custom PMD ruleset that accepts `method_condition_result` test names.
+6. Org-detail redaction: `redact-org-details.sh` with `pipefail`, JSON test output sent to `/dev/null`, the summary scrub, and no JUnit file. Tighten the username regex to require an alphabetic TLD, because today it also masks npm `pkg@1.2.3` strings.
+7. `release.yml`, including the promote job's release-notes rewrite, for repos that publish a package.
 
 ## Decisions made
 
@@ -59,6 +62,8 @@ Repo A's definition of done: CI green, README complete, ADRs written, Code Analy
 | Example credentials        | External Credential (Custom protocol, no secret) + Named Credential (SecuredEndpoint)                                  | Legacy Named Credential (deprecated model)                      | handoff  |
 | Docs vs example            | Separate PRs: example app (PR 6), README + case study (PR 7), release (PR 8)                                           | One PR as planned                                               | handoff  |
 | `main` CI scratch org      | Reuse the PR's green result when the merge tree is identical; otherwise a fresh org                                    | Pace PRs to the budget; scheduled `main` runs                   | ADR 0008 |
+| CI log hygiene             | Mask org details with a redact filter, scrub the result JSON, drop JUnit                                               | `--json > /dev/null` everywhere (loses failure diagnostics)     | PR 11    |
+| Old CI runs before public  | Delete every run older than the first clean `main` run                                                                 | Leave them (Dev Hub org Id stays visible)                       | handoff  |
 
 ## Open risks
 
