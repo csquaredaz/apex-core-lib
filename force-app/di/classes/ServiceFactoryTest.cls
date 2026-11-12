@@ -3,7 +3,8 @@ private class ServiceFactoryTest {
   private static ServiceFactory factory() {
     return new ServiceFactory(
       new BindingRegistry(
-        new Map<Type, Type>{ DiTestFixtures.IGreeter.class => DiTestFixtures.EnglishGreeter.class },
+        BindingRegistry.Kind.SERVICE,
+        new Map<String, Type>{ DiTestFixtures.GREETER => DiTestFixtures.EnglishGreeter.class },
         new List<DI_Binding__mdt>()
       )
     );
@@ -30,7 +31,11 @@ private class ServiceFactoryTest {
   static void newInstance_mockRegistered_returnsSameMockEveryCall() {
     // The Stub API can't stub inner types, so this mocks a top-level port instead of IGreeter.
     ServiceFactory services = new ServiceFactory(
-      new BindingRegistry(new Map<Type, Type>{ IAlertSink.class => NoOpAlertSink.class }, new List<DI_Binding__mdt>())
+      new BindingRegistry(
+        BindingRegistry.Kind.SERVICE,
+        new Map<String, Type>{ IAlertSink.class.getName() => NoOpAlertSink.class },
+        new List<DI_Binding__mdt>()
+      )
     );
     Mocks sinkMock = new Mocks();
     services.setMock(IAlertSink.class, sinkMock.stub(IAlertSink.class));
@@ -50,7 +55,17 @@ private class ServiceFactoryTest {
       factory().newInstance(ILogger.class);
       Assert.fail('Expected ApplicationException');
     } catch (ApplicationException e) {
-      Assert.isTrue(e.getMessage().startsWith('No binding for ILogger'), e.getMessage());
+      Assert.isTrue(e.getMessage().startsWith('No service binding for ILogger'), e.getMessage());
+    }
+  }
+
+  @IsTest
+  static void newInstance_nullInterface_throws() {
+    try {
+      factory().newInstance(null);
+      Assert.fail('Expected ApplicationException');
+    } catch (ApplicationException e) {
+      Assert.isTrue(e.getMessage().contains('null interface'), e.getMessage());
     }
   }
 
