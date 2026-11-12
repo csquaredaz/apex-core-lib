@@ -1,23 +1,31 @@
 /**
  * @description The default `IUnitOfWork`. Commit order is the SObject type list given to the
- * constructor, parents before children. Deletes run in reverse order, so children go first.
+ * constructor, parents before children. Each type's inserts run, then its upserts, so a child can
+ * look up a parent that was upserted. Updates follow in commit order. Deletes run in reverse order,
+ * so children go first.
  *
  * Guarantees:
  * - One savepoint around all DML and registered work. On failure it rolls back, clears the Ids it
- *   assigned to new records (so a retry can't update ghosts), and rethrows the original exception.
- * - One DML statement per SObject type per operation (insert, update, delete), plus the savepoint.
+ *   assigned to new records and to upserted records that had none (so a retry can't update
+ *   ghosts), and rethrows the original exception.
+ * - One DML statement per SObject type per operation (insert, upsert, update, delete), plus the
+ *   savepoint. Upserts of a type share one match key, so they stay one statement.
  *   Nothing is registered, nothing is spent.
  * - DML goes through the `IDml` strategy, `UserModeDml` by default (ADR 0005).
  *
  * Registration mistakes fail fast with `UnitOfWorkException`: a new record with an Id, a dirty or
  * deleted record without one, a type outside the commit order, the same Id registered dirty as
- * two different instances without a field list, or the same Id both dirty and deleted.
+ * two different instances without a field list, the same Id both dirty and deleted, an upsert key
+ * that isn't an `idLookup` field of the record's type, or a second upsert key for the same type.
  * @group Public API
  */
 public with sharing class UnitOfWork implements IUnitOfWork {
   private final List<SObjectType> commitOrder = new List<SObjectType>();
   private final IDml dml;
   private final Map<SObjectType, List<SObject>> newByType = new Map<SObjectType, List<SObject>>();
+  private final Map<SObjectType, List<SObject>> upsertByType = new Map<SObjectType, List<SObject>>();
+  private final Map<SObjectType, SObjectField> upsertKeyByType = new Map<SObjectType, SObjectField>();
+  private final List<SObject> upsertsWithoutId = new List<SObject>();
   private final Map<SObjectType, Map<Id, SObject>> dirtyByType = new Map<SObjectType, Map<Id, SObject>>();
   private final Map<SObjectType, Map<Id, SObject>> deletedByType = new Map<SObjectType, Map<Id, SObject>>();
   private final Map<SObjectType, List<Relationship>> relationshipsByType = new Map<SObjectType, List<Relationship>>();
@@ -47,6 +55,7 @@ public with sharing class UnitOfWork implements IUnitOfWork {
     for (SObjectType sObjectType : commitOrder) {
       this.commitOrder.add(sObjectType);
       newByType.put(sObjectType, new List<SObject>());
+      upsertByType.put(sObjectType, new List<SObject>());
       dirtyByType.put(sObjectType, new Map<Id, SObject>());
       deletedByType.put(sObjectType, new Map<Id, SObject>());
       relationshipsByType.put(sObjectType, new List<Relationship>());
@@ -121,6 +130,24 @@ public with sharing class UnitOfWork implements IUnitOfWork {
     }
   }
 
+  /**
+   * @description See `IUnitOfWork.registerUpsert`.
+   * Limits: one field describe the first time a type gets its key.
+   * @param records Records of types in the commit order.
+   * @param externalIdField The match key.
+   */
+  public void registerUpsert(List<SObject> records, SObjectField externalIdField) {
+    if (records == null || externalIdField == null) {
+      throw new UnitOfWorkException('registerUpsert needs records and an external Id field.');
+    }
+    for (SObject record : records) {
+      SObjectType sObjectType = typeInCommitOrder(record);
+      useUpsertKey(sObjectType, externalIdField);
+      upsertByType.get(sObjectType).add(record);
+      registrations++;
+    }
+  }
+
   /** @description See `IUnitOfWork.registerDeleted`. @param record A record with an Id. */
   public void registerDeleted(SObject record) {
     SObjectType sObjectType = typeWithId(record, 'registerDeleted');
@@ -170,6 +197,7 @@ public with sharing class UnitOfWork implements IUnitOfWork {
   /**
    * @description See `IUnitOfWork.commitWork`.
    * Limits: 1 DML for the savepoint plus 1 per non-empty (type, operation); none if nothing is registered.
+   * Upserts run after the type's inserts, so `registerRelationship` works on upserted parents too.
    * @throws UnitOfWorkException If called twice, or a parent has no Id when its child is written.
    */
   public void commitWork() {
@@ -180,9 +208,10 @@ public with sharing class UnitOfWork implements IUnitOfWork {
     if (isEmpty()) {
       return;
     }
+    rememberUpsertsWithoutId();
     Savepoint savepoint = Database.setSavepoint();
     try {
-      insertInCommitOrder();
+      writeNewInCommitOrder();
       updateInCommitOrder();
       deleteInReverseOrder();
       for (IDoWork unit : work) {
@@ -195,12 +224,16 @@ public with sharing class UnitOfWork implements IUnitOfWork {
     }
   }
 
-  private void insertInCommitOrder() {
+  private void writeNewInCommitOrder() {
     for (SObjectType sObjectType : commitOrder) {
       resolveRelationships(sObjectType);
       List<SObject> inserts = newByType.get(sObjectType);
       if (!inserts.isEmpty()) {
         dml.dmlInsert(inserts);
+      }
+      List<SObject> upserts = upsertByType.get(sObjectType);
+      if (!upserts.isEmpty()) {
+        dml.dmlUpsert(upserts, upsertKeyByType.get(sObjectType));
       }
     }
   }
@@ -229,11 +262,46 @@ public with sharing class UnitOfWork implements IUnitOfWork {
     }
   }
 
+  private void useUpsertKey(SObjectType sObjectType, SObjectField key) {
+    SObjectField current = upsertKeyByType.get(sObjectType);
+    if (current == key) {
+      return;
+    }
+    if (current != null) {
+      throw new UnitOfWorkException(
+        sObjectType + ' is already upserted by ' + current + '. Use one external Id field per type per Unit of Work.'
+      );
+    }
+    DescribeFieldResult field = key.getDescribe();
+    if (
+      !field.isIdLookup() ||
+      sObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).fields.getMap().get(field.getName()) != key
+    ) {
+      throw new UnitOfWorkException(
+        key + ' is not an External Id or idLookup field of ' + sObjectType + ', so upsert cannot match on it.'
+      );
+    }
+    upsertKeyByType.put(sObjectType, key);
+  }
+
+  private void rememberUpsertsWithoutId() {
+    for (List<SObject> upserts : upsertByType.values()) {
+      for (SObject record : upserts) {
+        if (record.Id == null) {
+          upsertsWithoutId.add(record);
+        }
+      }
+    }
+  }
+
   private void clearAssignedIds() {
     for (List<SObject> inserts : newByType.values()) {
       for (SObject record : inserts) {
         record.Id = null;
       }
+    }
+    for (SObject record : upsertsWithoutId) {
+      record.Id = null;
     }
   }
 
