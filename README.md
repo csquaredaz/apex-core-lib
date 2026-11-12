@@ -55,13 +55,13 @@ npm run org:test
 
 ### Install the package in your own org
 
-Each `v*` tag builds an unlocked package version (no namespace, ADR 0001) and attaches its install command to the [GitHub release](../../releases). The current version is `1.0.0-1` (beta):
+Each `v*` tag builds an unlocked package version (no namespace, ADR 0001) and attaches its install command to the [GitHub release](../../releases). The current released version is `1.0.0-1`:
 
 ```bash
 sf package install --package 04tak000000u0zpAAA --target-org <alias> --wait 20 --no-prompt
 ```
 
-Beta versions install only in scratch orgs and sandboxes. In a consumer project, declare the dependency in `sfdx-project.json` as `"dependencies": [{ "package": "apex-core-lib@1.0.0-1" }]`, with that alias mapped to the `04t` Id. The test kit (`Mocks`, `FakeId`, `RecordingLogger`) is usable from consumer tests once the package is installed.
+It installs in any org, including production. Versions not yet promoted install only in scratch orgs and sandboxes. In a consumer project, declare the dependency in `sfdx-project.json` as `"dependencies": [{ "package": "apex-core-lib@1.0.0-1" }]`, with that alias mapped to the `04t` Id. The test kit (`Mocks`, `FakeId`, `RecordingLogger`) is usable from consumer tests once the package is installed.
 
 ## Usage
 
