@@ -24,9 +24,9 @@ done
 
 sf project deploy start --target-org "$alias_name" --wait 20
 
-# Assign every permission set this repo ships, so the default user can exercise the features.
+# Assign every permission set this repo ships (package and example app), so the default user can exercise the features.
 # (find, not **, because macOS ships bash 3.2 without globstar.)
-find force-app -name '*.permissionset-meta.xml' | while read -r ps; do
+find force-app example -name '*.permissionset-meta.xml' | while read -r ps; do
   sf org assign permset --name "$(basename "$ps" .permissionset-meta.xml)" --target-org "$alias_name"
 done
 
